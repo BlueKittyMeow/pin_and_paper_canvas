@@ -1,0 +1,15 @@
+name: pin_and_paper_canvas
+description: Spatial canvas positioning for Pin & Paper
+publish_to: 'none'
+version: 0.0.1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
