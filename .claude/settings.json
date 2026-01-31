@@ -2,6 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(/home/bluekitty/flutter/bin/flutter build:*)"
+    ],
+    "additionalDirectories": [
+      "/home/bluekitty/Documents/Git/pin_and_paper_dev_harness"
     ]
   },
   "hooks": {
