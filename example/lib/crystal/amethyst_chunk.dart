@@ -545,21 +545,11 @@ class AmethystChunkPainter extends CustomPainter {
     // points stay pinned; the top gets thrown furthest. ---
     final shadowDir = Offset(-light.x, 0.85);
 
-    if (isSelected) {
-      // Soft amber underglow, beneath even the shadow/pool -- the whole
-      // "brighten specular + underglow" selection treatment stays confined
-      // to this one extra pool plus the specular boost below; no border,
-      // no outline.
-      _paintPool(
-        canvas,
-        centerX: contactCx,
-        centerY: contactCy,
-        radius: scale * 1.15,
-        innerColor: const Color.fromRGBO(196, 148, 26, 0.22),
-        outerColor: const Color.fromRGBO(196, 148, 26, 0),
-        verticalSquish: 0.30,
-      );
-    }
+    // Selection deliberately paints NOTHING on the ground: the earlier amber
+    // underglow washed light across the very contact zone the shadow work
+    // grounds the stone with, reading as a pale band under the base (owner
+    // reports, pixel-profiled 2026-08-03). A selected stone instead sparkles
+    // harder — see specularBoost and the stroke treatment below.
 
     // Cast shadow: the hull silhouette skewed onto the desk. Height above
     // the contact line becomes displacement along [shadowDir], foreshortened
@@ -668,7 +658,11 @@ class AmethystChunkPainter extends CustomPainter {
 
     // --- front faces: lambert + specular shading ---
     final faceAlpha = (1 - glassiness * 0.55).clamp(0.0, 1.0);
-    final specularBoost = isSelected ? 1.15 : 1.0;
+    // Selected = livelier light inside the stone (the whole selection cue
+    // now that the ground underglow is gone): stronger specular glints and
+    // slightly brighter facet strokes.
+    final specularBoost = isSelected ? 1.45 : 1.0;
+    final strokeAlpha = isSelected ? 0.42 : 0.28;
     for (final f in frontFaces) {
       final lambert = math.max(0.0, f.normal.dot(light));
       // Reflection vector's z-component: since `light` and `f.normal` are
@@ -720,7 +714,7 @@ class AmethystChunkPainter extends CustomPainter {
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1
-            ..color = HSLColor.fromAHSL(0.28, 280, 0.60, strokeLightness).toColor(),
+            ..color = HSLColor.fromAHSL(strokeAlpha, 280, 0.60, strokeLightness).toColor(),
         );
       }
       canvas.restore();
