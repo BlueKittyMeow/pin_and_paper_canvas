@@ -6,12 +6,12 @@ import 'package:pin_and_paper_card_renderer/card_renderer.dart';
 
 /// Number of mock cards the example seeds the canvas with.
 ///
-/// Kept as a single easily-changed constant so the manual "100 entities at
+/// 24 gives a pleasant, uncrowded demo desk (owner feedback: 100 was
+/// overwhelming with the overflow stacking). For the manual "100 entities at
 /// 60fps" performance gate (DRAG_DROP_CANVAS_MVP_PLAN.md's checkpoint,
-/// verified by hand on desktop, not by this automated suite) is a one-command
-/// run: just `flutter run -d <desktop>` in this directory, no flags needed.
-/// Defaults to 100 for exactly that reason.
-const int kMockCardCount = 100;
+/// verified by hand on desktop), set this to 100 and `flutter run` — that
+/// one-line flip is the whole procedure. Gate last passed 2026-08-03.
+const int kMockCardCount = 24;
 
 /// Believable to-do titles so the Milestone 2 preview reads like a real desk,
 /// not lorem ipsum. Cycled (with variation) across [kMockCardCount] cards.

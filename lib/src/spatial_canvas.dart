@@ -463,10 +463,20 @@ class _SpatialCanvasState extends State<SpatialCanvas>
       // gesture, don't start a card drag at all.
       return;
     }
+    // Grabbing a card is choosing it: dragging selects, same as a tap
+    // (owner feedback 2026-08-03 — the selection glow never appeared on
+    // drag-only interactions). onEntityTapped is NOT fired here; taps and
+    // drags stay distinct events for the data source.
+    final selectionChanged = !_selectedIds.contains(entity.id) || _selectedIds.length != 1;
     setState(() {
       _draggingEntityId = entity.id;
       _dragPreviewPosition = entity.position;
+      _selectedIds = <String>{entity.id};
     });
+    if (selectionChanged) {
+      widget.dataSource.onSelectionChanged(_selectedIds);
+      _controller.notifyCanvasChanged();
+    }
   }
 
   void _handlePanUpdate(SpatialEntity entity, DragUpdateDetails details) {

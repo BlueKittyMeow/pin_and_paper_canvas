@@ -421,6 +421,23 @@ void main() {
         reason: 'drag must engage the card\'s pan recognizer');
   });
 
+  testWidgets('starting a drag selects the card (glow without needing a tap)', (tester) async {
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(100, 100))]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    await _dragCardInSteps(
+      tester,
+      start: tester.getCenter(find.byKey(const Key('card-a'))),
+      totalScreenDelta: const Offset(80, 40),
+    );
+
+    expect(controller.selectedIds, {'a'});
+    expect(dataSource.selectionChanges.last, {'a'});
+    // Dragging is not tapping: the tap callback must not have fired.
+    expect(dataSource.tappedCalls, isEmpty);
+  });
+
   testWidgets('the actively-dragged card renders on top even with a lower zIndex', (tester) async {
     // 'lo' has the lower zIndex and starts well clear of 'hi' so the drag can
     // originate on it unambiguously; the drag then carries it over 'hi'.
