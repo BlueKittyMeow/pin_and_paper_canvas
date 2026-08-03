@@ -215,14 +215,30 @@ class _SpatialCanvasState extends State<SpatialCanvas>
             onScaleEnd: _handleScaleEnd,
             onTapUp: _handleCanvasTapUp,
             child: ClipRect(
-              child: Transform(
-                transform: viewportMatrix(pan: _pan, zoom: _zoom),
-                child: SizedBox(
-                  width: widget.canvasSize.width,
-                  height: widget.canvasSize.height,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [for (final entity in entities) _buildEntity(entity)],
+              // OverflowBox hands the canvas child unbounded constraints so the
+              // SizedBox really lays out at canvasSize. Without it, incoming
+              // viewport constraints clamp the SizedBox/Stack to window size —
+              // Clip.none still paints the escapee cards, but RenderBox hit
+              // tests reject any point outside the laid-out bounds, making
+              // every card beyond the window's dimensions (in canvas coords)
+              // visible yet untappable when zoomed out or panned.
+              // alignment must stay topLeft: the canvas origin has to coincide
+              // with the viewport origin for viewportMatrix to hold.
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: 0,
+                minHeight: 0,
+                maxWidth: double.infinity,
+                maxHeight: double.infinity,
+                child: Transform(
+                  transform: viewportMatrix(pan: _pan, zoom: _zoom),
+                  child: SizedBox(
+                    width: widget.canvasSize.width,
+                    height: widget.canvasSize.height,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [for (final entity in entities) _buildEntity(entity)],
+                    ),
                   ),
                 ),
               ),

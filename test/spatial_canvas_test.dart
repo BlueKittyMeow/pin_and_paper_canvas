@@ -360,4 +360,45 @@ void main() {
 
     expect(tester.getTopLeft(find.byKey(const Key('card-a'))), const Offset(220, 180));
   });
+
+  testWidgets('cards beyond the viewport dimensions (in canvas coords) are tappable when zoomed out', (tester) async {
+    // Regression: incoming viewport constraints used to clamp the canvas
+    // SizedBox/Stack to window size, so cards whose canvas position exceeded
+    // the window's own dimensions painted (Clip.none) but failed hit tests --
+    // visible yet untappable/undraggable once zoomed out or panned. Found
+    // live in the example app: with a ~1280px window every card past canvas
+    // x=1280 fell through to onCanvasTapped.
+    final farEntity = _TestEntity(id: 'far', position: const Offset(1200, 900));
+    final dataSource = _TestDataSource([farEntity]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    controller.zoomTo(0.5, animate: false);
+    await tester.pumpAndSettle();
+    expect(controller.currentZoom, 0.5);
+
+    // Derive the card's on-screen center from the controller's own view of
+    // the viewport, so the test stays correct however zoomTo pans/clamps.
+    final zoom = controller.currentZoom;
+    final pan = -controller.visibleRect.topLeft * zoom;
+    final entityCenter = farEntity.position + const Offset(50, 30); // size 100x60
+    final screenPoint = canvasToScreen(entityCenter, pan: pan, zoom: zoom);
+
+    await tester.tapAt(screenPoint);
+    // Wait out the double-tap timeout (real Timer, not a frame) -- see the
+    // 'tapping a card selects it' test above for why pumpAndSettle alone
+    // returns too early.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(dataSource.tappedCalls, ['far'],
+        reason: 'tap must reach the card, not fall through to the felt');
+    expect(dataSource.canvasTappedCalls, isEmpty);
+
+    // And it must be draggable, not just tappable.
+    await _dragCardInSteps(tester,
+        start: screenPoint, totalScreenDelta: const Offset(-60, -40));
+    expect(dataSource.movedCalls, isNotEmpty,
+        reason: 'drag must engage the card\'s pan recognizer');
+  });
 }
