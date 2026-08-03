@@ -1,0 +1,13 @@
+/// Spatial canvas positioning for Pin & Paper — pan, zoom, drag, rotate.
+///
+/// See `SpatialCanvas`, `SpatialCanvasController`, `SpatialEntity`,
+/// `SpatialDataSource`, and the pure viewport math helpers
+/// (`screenToCanvas`, `canvasToScreen`, `zoomAtFocal`, `clampPan`,
+/// `viewportMatrix`).
+library pin_and_paper_canvas;
+
+export 'src/spatial_canvas.dart';
+export 'src/spatial_canvas_controller.dart' show SpatialCanvasController;
+export 'src/spatial_data_source.dart';
+export 'src/spatial_entity.dart';
+export 'src/viewport_math.dart';
