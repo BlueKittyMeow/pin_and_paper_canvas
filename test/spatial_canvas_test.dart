@@ -439,6 +439,31 @@ void main() {
     expect(dataSource.tappedCalls, isEmpty);
   });
 
+  testWidgets('drag lift: card scales up while dragged, settles back on release', (tester) async {
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(100, 100))]);
+    await _pumpCanvas(tester, dataSource: dataSource);
+
+    double liftScale() => tester
+        .widget<AnimatedScale>(
+          find.ancestor(of: find.byKey(const Key('card-a')), matching: find.byType(AnimatedScale)).first,
+        )
+        .scale;
+
+    expect(liftScale(), 1.0);
+
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(const Key('card-a'))));
+    for (var i = 0; i < 15; i++) {
+      await gesture.moveBy(const Offset(6, 4));
+      await tester.pump(const Duration(milliseconds: 8));
+    }
+    // Mid-drag: lifted (docs/drag-feel-research.md Candidate 1).
+    expect(liftScale(), 1.03);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(liftScale(), 1.0);
+  });
+
   testWidgets('the actively-dragged card renders on top even with a lower zIndex', (tester) async {
     // 'lo' has the lower zIndex and starts well clear of 'hi' so the drag can
     // originate on it unambiguously; the drag then carries it over 'hi'.

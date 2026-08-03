@@ -327,7 +327,31 @@ class _SpatialCanvasState extends State<SpatialCanvas>
         // SpatialEntity.rotation is in degrees per INTERFACE_CONTRACTS.md;
         // Transform.rotate wants radians.
         angle: entity.rotation * (math.pi / 180.0),
-        child: RepaintBoundary(
+        // Drag lift (docs/drag-feel-research.md, Candidate 1): scale + shadow
+        // on pickup, nothing during the move — position always tracks the
+        // pointer 1:1. Tunable by eye: scale factor, shadow, durations.
+        child: AnimatedScale(
+          scale: isDraggingThis ? 1.03 : 1.0,
+          duration: Duration(milliseconds: isDraggingThis ? 120 : 150),
+          curve: isDraggingThis ? Curves.easeOut : Curves.easeIn,
+          child: AnimatedContainer(
+            duration: Duration(milliseconds: isDraggingThis ? 120 : 150),
+            curve: isDraggingThis ? Curves.easeOut : Curves.easeIn,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: isDraggingThis
+                  ? const [BoxShadow(color: Color(0x40000000), blurRadius: 10, offset: Offset(2, 6))]
+                  : const <BoxShadow>[],
+            ),
+            child: _buildEntityCore(entity, isSelected),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEntityCore(SpatialEntity entity, bool isSelected) {
+    return RepaintBoundary(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             // Deliberately excludes PointerDeviceKind.trackpad (see this
@@ -348,9 +372,7 @@ class _SpatialCanvasState extends State<SpatialCanvas>
             onPanEnd: (_) => _handlePanEnd(entity),
             child: widget.entityBuilder(entity, isSelected),
           ),
-        ),
-      ),
-    );
+        );
   }
 
   // --- Global pointer tracking (arena-independent) ---------------------
