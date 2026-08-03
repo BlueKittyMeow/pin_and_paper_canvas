@@ -3,6 +3,8 @@
 // rendering pipeline (no CustomPainter/Canvas involved here; see
 // amethyst_chunk_painter_test.dart for that).
 
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pin_and_paper_canvas_example/crystal/amethyst_chunk.dart';
 
@@ -133,6 +135,34 @@ void main() {
       for (final face in AmethystChunkMesh.faces) {
         expect(face, hasLength(3));
       }
+    });
+
+    test('baseAlignedYaw: the bottom screen edge is horizontal and wide', () {
+      // Re-derive screen y for base vertices with the painter's projection
+      // (same formulas, same kAmethystCameraTilt) at the aligned yaw: the
+      // two lowest-projecting base vertices must tie exactly (horizontal
+      // bottom edge, parallel to the card edges) and span a real width.
+      final yaw = AmethystChunkMesh.baseAlignedYaw;
+      final seen = <String>{};
+      final base = <Vec3>[
+        for (final f in AmethystChunkMesh.faces)
+          for (final v in f)
+            if (v.y == 0 && seen.add('${v.x},${v.z}')) v,
+      ];
+      double screenY(Vec3 v) {
+        final z1 = -v.x * math.sin(yaw) + v.z * math.cos(yaw);
+        return -(v.y * math.cos(kAmethystCameraTilt) - z1 * math.sin(kAmethystCameraTilt));
+      }
+
+      double screenX(Vec3 v) => v.x * math.cos(yaw) + v.z * math.sin(yaw);
+
+      final lowest = base.map(screenY).reduce(math.max);
+      final bottom = base.where((v) => (screenY(v) - lowest).abs() < 1e-9).toList();
+      expect(bottom.length, greaterThanOrEqualTo(2),
+          reason: 'an edge (two vertices), not a single point, must rest lowest');
+      final xs = bottom.map(screenX).toList()..sort();
+      expect(xs.last - xs.first, greaterThan(0.25),
+          reason: 'the resting edge should be a real base, not a sliver');
     });
 
     test('flat-cut base: at least four vertices sit exactly on y=0', () {

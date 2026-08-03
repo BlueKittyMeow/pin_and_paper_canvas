@@ -7,6 +7,8 @@ import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 import 'package:pin_and_paper_card_renderer/card_renderer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'crystal/amethyst_chunk.dart';
+
 /// Number of mock cards the example seeds the canvas with.
 ///
 /// 24 gives a pleasant, uncrowded demo desk (owner feedback: 100 was
@@ -279,9 +281,12 @@ class MockSpatialDataSource extends SpatialDataSource {
     return AmethystEntity(
       id: 'amethyst-1',
       position: Offset(margin, top),
-      // Reference prototype's initial pose (`state.rot = 0.15`); fixed
-      // forever per this entity's doc comment.
-      rotationY: 0.15,
+      // Base-aligned pose (supersedes the reference prototype's arbitrary
+      // `state.rot = 0.15`): the flat base's bottom edge projects perfectly
+      // horizontal, parallel to the card edges, so the stone reads as
+      // resting flush on the flat-lay desk. Fixed forever per this entity's
+      // doc comment.
+      rotationY: AmethystChunkMesh.baseAlignedYaw,
       size: chunkSize,
       zIndex: cardCount,
     );

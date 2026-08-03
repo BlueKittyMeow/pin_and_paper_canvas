@@ -25,6 +25,12 @@ import 'package:flutter/material.dart';
 /// 9.0 degrees (see [AmethystChunk.lightAzimuthDegrees]'s doc comment).
 const double kDeskLightAzimuth = 30.0;
 
+/// The painter's fixed camera pitch (see [AmethystChunkPainter]). Public so
+/// [AmethystChunkMesh.baseAlignedYaw] can be computed with the *same*
+/// projection the painter uses -- the two must never drift apart, or the
+/// "bottom edge sits flat" guarantee silently breaks.
+const double kAmethystCameraTilt = -0.50;
+
 // ---------------------------------------------------------------------------
 // Mesh generation: seeded point cloud -> convex hull. Pure math, no Flutter
 // dependency, so it's independently testable (see amethyst_chunk_test.dart's
@@ -217,6 +223,68 @@ class AmethystChunkMesh {
   /// [Vec3]) forming the convex hull of `chunkCloud(seed, pointCount)`.
   static final List<List<Vec3>> faces = hull3D(chunkCloud(seed, pointCount));
 
+  /// The yaw at which the flat base's most camera-friendly edge projects as
+  /// the stone's *bottom* silhouette, perfectly horizontal on screen -- so a
+  /// resting stone's contact line runs parallel to the card edges (owner
+  /// request 2026-08-03: "rotate the stone so the horizontal bottom of it is
+  /// flat"). Computed with the painter's own projection formulas at
+  /// [kAmethystCameraTilt]: for each edge of the base polygon there is
+  /// exactly one yaw (mod pi) that makes its two endpoints share a screen y;
+  /// among the candidates whose edge is actually the lowest thing on screen
+  /// at that yaw, the widest wins.
+  static final double baseAlignedYaw = _computeBaseAlignedYaw();
+
+  static double _computeBaseAlignedYaw() {
+    // Unique base-plane vertices (the flat cut guarantees >= 4), ordered
+    // around their centroid so consecutive pairs are real polygon edges.
+    final seen = <String>{};
+    final base = <Vec3>[];
+    for (final face in faces) {
+      for (final v in face) {
+        if (v.y == 0 && seen.add('${v.x},${v.z}')) base.add(v);
+      }
+    }
+    if (base.length < 2) return 0;
+    final cx = base.map((v) => v.x).reduce((a, b) => a + b) / base.length;
+    final cz = base.map((v) => v.z).reduce((a, b) => a + b) / base.length;
+    base.sort((a, b) =>
+        math.atan2(a.z - cz, a.x - cx).compareTo(math.atan2(b.z - cz, b.x - cx)));
+
+    // Same math as AmethystChunkPainter's project(), reduced to what decides
+    // screen y for a base vertex (y == 0): sy ∝ -y2 = z1 * sin(tilt).
+    double screenY(Vec3 v, double yaw) {
+      final z1 = -v.x * math.sin(yaw) + v.z * math.cos(yaw);
+      return -(v.y * math.cos(kAmethystCameraTilt) - z1 * math.sin(kAmethystCameraTilt));
+    }
+
+    double screenX(Vec3 v, double yaw) =>
+        v.x * math.cos(yaw) + v.z * math.sin(yaw);
+
+    var bestYaw = 0.0, bestSpan = -1.0;
+    for (var i = 0; i < base.length; i++) {
+      final a = base[i], b = base[(i + 1) % base.length];
+      // Yaw that zeroes the edge's rotated z-span -> endpoints share sy.
+      final theta = math.atan2(b.z - a.z, b.x - a.x);
+      for (final yaw in [theta, theta + math.pi]) {
+        final edgeY = math.max(screenY(a, yaw), screenY(b, yaw));
+        var isBottom = true;
+        for (final v in base) {
+          if (screenY(v, yaw) > edgeY + 1e-9) {
+            isBottom = false;
+            break;
+          }
+        }
+        if (!isBottom) continue;
+        final span = (screenX(a, yaw) - screenX(b, yaw)).abs();
+        if (span > bestSpan) {
+          bestSpan = span;
+          bestYaw = yaw;
+        }
+      }
+    }
+    return bestYaw;
+  }
+
   /// Milky inclusions: soft radial glows at fixed 3D anchors inside the
   /// stone (reference: `CHUNK.inclusions.fog`).
   static const List<FogBlob> fogBlobs = [
@@ -395,7 +463,7 @@ class AmethystChunkPainter extends CustomPainter {
   /// sticker (owner report 2026-08-03). -0.50 shows more top, less side --
   /// closer to the desk's own viewpoint -- which together with the contact
   /// shadow grounds it on the paper.
-  static const double _cameraTilt = -0.50;
+  static const double _cameraTilt = kAmethystCameraTilt;
 
   @override
   void paint(Canvas canvas, Size size) {
