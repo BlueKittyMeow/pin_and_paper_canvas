@@ -562,115 +562,58 @@ class AmethystChunkPainter extends CustomPainter {
     final contactCx = (baseMinX + baseMaxX) / 2;
     final contactCy = lowestY - scale * 0.02;
 
-    // --- directional cast shadow + transmitted pool (painted first,
-    // beneath everything). The desk story: a window at the top-right
-    // (kDeskLightAzimuth), so shadows throw down-left, shaped like the
-    // stone itself -- the silhouette projected along the light, each point
-    // displaced proportionally to its height above the contact line. Base
-    // points stay pinned; the top gets thrown furthest. ---
-    final shadowDir = Offset(-light.x, 0.85);
-
-    // Selection deliberately paints NOTHING on the ground: the earlier amber
-    // underglow washed light across the very contact zone the shadow work
-    // grounds the stone with, reading as a pale band under the base (owner
-    // reports, pixel-profiled 2026-08-03). A selected stone instead sparkles
-    // harder — see specularBoost and the stroke treatment below.
-
-    // Cast shadow: the hull silhouette skewed onto the desk. Height above
-    // the contact line becomes displacement along [shadowDir], foreshortened
-    // (0.5) so it reads as paper-flat, not a standing mirror image.
-    Offset castPoint(Offset p) {
-      final heightAboveBase = (contactCy - p.dy).clamp(0.0, double.infinity);
-      return Offset(
-        p.dx + shadowDir.dx * heightAboveBase * 0.5,
-        contactCy + shadowDir.dy * heightAboveBase * 0.5,
-      );
-    }
+    // --- ground shadow pass ---
+    final lowerSilhouette = _lowerSilhouetteChain(hull);
+    final shadowDx = -light.x;
+    final shadowDy = 0.55;
 
     if (hull.length > 2) {
-      final castHull = hull.map(castPoint).toList(growable: false);
-      final tail = Offset(
-        contactCx + shadowDir.dx * scale * 0.9,
-        contactCy + shadowDir.dy * scale * 0.9,
-      );
-      final castPaint = Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(contactCx, contactCy),
-          tail,
-          // Dark enough to register on the dark kraft, not just on cream
-          // cards (owner report: grounding read worse on the corkboard).
-          [const Color.fromRGBO(24, 14, 8, 0.52), const Color.fromRGBO(24, 14, 8, 0.06)],
-        )
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.035);
-      canvas.drawPath(_polygonPath(castHull), castPaint);
+      final shadowPts = <Offset>[];
+      for (final p in hull) {
+        final h = (contactCy - p.dy).clamp(0.0, scale * 1.5);
+        // Asymmetric lean: shadow (left) side extends more, lit (right) side relaxes sooner
+        final sideFactor = p.dx < contactCx ? 1.0 : 0.40;
+        final projX = shadowDx * h * 0.48 * sideFactor;
+        final projY = shadowDy * h * 0.48 * sideFactor;
 
-      // Transmitted purple: light that came *through* the stone lands inside
-      // the very shadow the stone casts.
+        // Push top edge up into stone silhouette to prevent any light gap/halo
+        double overlapY = 0.0;
+        if (p.dy > contactCy - scale * 0.35) {
+          overlapY = -scale * 0.12;
+        }
+        shadowPts.add(Offset(p.dx + projX, p.dy + projY + overlapY));
+      }
+      // Combine with hull points to anchor shadow beneath stone
+      shadowPts.addAll(hull);
+
+      final shadowHull = _convexHull2D(shadowPts);
+      final shadowPath = _polygonPath(shadowHull);
+
+      // 1. Soft painterly drop-shadow blob (single path, no additive double-darkness)
+      final shadowPaint = Paint()
+        ..color = const Color.fromRGBO(20, 10, 8, 0.46)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.060);
+      canvas.drawPath(shadowPath, shadowPaint);
+
+      // 2. Soft purple transmitted-light glow inside the shadow, never escaping onto clean paper
+      canvas.save();
+      final glowClipPath = Path()
+        ..addPath(shadowPath, Offset.zero)
+        ..addPath(_polygonPath(hull), Offset.zero);
+      canvas.clipPath(glowClipPath);
+
       _paintPool(
         canvas,
-        centerX: contactCx + shadowDir.dx * scale * 0.42,
-        centerY: contactCy + shadowDir.dy * scale * 0.42,
-        radius: scale * 0.48,
-        innerColor: Color.fromRGBO(149, 90, 219, (0.42 + 0.14 * inclusions).clamp(0.0, 1.0)),
-        outerColor: const Color.fromRGBO(139, 92, 201, 0),
-        verticalSquish: 0.5,
+        centerX: contactCx + shadowDx * scale * 0.20,
+        centerY: contactCy + shadowDy * scale * 0.20,
+        radius: scale * 0.44,
+        innerColor: Color.fromRGBO(168, 85, 235, (0.50 + 0.15 * inclusions).clamp(0.0, 1.0)),
+        outerColor: const Color.fromRGBO(135, 55, 195, 0),
+        verticalSquish: 0.55,
       );
-    }
-    // Contact shadow: the tight, dark occlusion right where stone meets
-    // paper -- the "it is actually resting on something" cue. NOT a
-    // bounding-box ellipse (owner report: that pokes out below the base's
-    // higher side like an invisible shim). Instead a band that follows the
-    // hull's bottom contour: its top edge rides the silhouette and its
-    // drop tapers to nothing where the body lifts away from the paper.
-    // The cast blob's top edge is a flat line at the contact level, but the
-    // stone's underside is a CURVE — under the flanks a wedge of bare desk
-    // showed between silhouette and shadow (owner falsified the previous
-    // "selection glow" diagnosis with a controlled screenshot pair; the
-    // wedge was the real light band all along). The SKIRT fills that wedge:
-    // the region bounded above by the full lower-silhouette contour and
-    // below by the contact line, so darkness climbs to meet the stone's
-    // actual underside at every column.
-    // Ambient-occlusion band under the belly: hugs the full lower-silhouette
-    // contour with a LIMITED drop that tapers at the horizontal extremes.
-    // (The previous full-depth "skirt" filled clear down to the contact line
-    // even under the mid-height overhangs, producing square shadow wings
-    // either side of the base — owner report. An overhang blocks ambient
-    // light softly; only the cast blob carries the hard directional shadow.)
-    final lowerSilhouette = _lowerSilhouetteChain(hull);
-    if (lowerSilhouette.length >= 2) {
-      final n = lowerSilhouette.length;
-      final ao = Path()
-        ..moveTo(lowerSilhouette.first.dx, lowerSilhouette.first.dy + 1);
-      for (final p in lowerSilhouette.skip(1)) {
-        ao.lineTo(p.dx, p.dy + 1);
-      }
-      for (var i = n - 1; i >= 0; i--) {
-        final p = lowerSilhouette[i];
-        final t = n == 1 ? 0.5 : i / (n - 1);
-        final endTaper = (math.min(t, 1 - t) / 0.2).clamp(0.3, 1.0);
-        ao.lineTo(p.dx, p.dy + 1 + scale * 0.13 * endTaper);
-      }
-      ao.close();
-      canvas.drawPath(
-        ao,
-        Paint()
-          ..color = const Color.fromRGBO(20, 11, 8, 0.40)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.035),
-      );
+      canvas.restore();
     }
 
-    // Opaque interior backing: the glassy facets composite at ~66% alpha, so
-    // without this the desk/card shows THROUGH the stone at its rim — a
-    // bright edge exactly where shading is darkest (owner spotted the light
-    // edge along the shaded flanks). A deep-violet fill under the facet
-    // passes means glassiness reveals the stone's interior, never the paper
-    // behind it.
-    if (hull.length > 2) {
-      canvas.drawPath(
-        _polygonPath(hull),
-        Paint()..color = const Color.fromRGBO(26, 14, 40, 0.94),
-      );
-    }
 
     // --- back faces: dimmed interior ---
     for (final f in backFaces) {
