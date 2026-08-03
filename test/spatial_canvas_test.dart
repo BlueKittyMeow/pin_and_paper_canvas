@@ -94,6 +94,7 @@ Future<void> _pumpCanvas(
   required SpatialDataSource dataSource,
   SpatialCanvasController? controller,
   Size canvasSize = const Size(2000, 1500),
+  SpatialEntityBuilder entityBuilder = _buildTestEntity,
 }) async {
   tester.view.physicalSize = const Size(800, 600);
   tester.view.devicePixelRatio = 1.0;
@@ -103,7 +104,7 @@ Future<void> _pumpCanvas(
     MaterialApp(
       home: SpatialCanvas(
         dataSource: dataSource,
-        entityBuilder: _buildTestEntity,
+        entityBuilder: entityBuilder,
         canvasSize: canvasSize,
         controller: controller,
       ),
@@ -539,6 +540,113 @@ void main() {
     expect(controller.visibleRect, isNot(equals(rectBefore)),
         reason: 'trackpad gestures must still pan/zoom the viewport');
   });
+
+  testWidgets('trackpad pinch (scale != 1) over empty felt zooms the viewport', (tester) async {
+    // Regression coverage added while investigating an owner report of
+    // "pinch-to-zoom stopped working on Linux desktop (trackpad)". The
+    // above pan test never exercises `scale` (it defaults to 1.0 in
+    // `panZoomUpdate`), so it can't catch a zoom-specific break. This test
+    // drives `scale` directly to make sure a trackpad pinch reaches
+    // `_handleScaleUpdate` and actually changes `currentZoom`.
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(300, 300))]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    const feltPoint = Offset(700, 500); // away from the only card
+    final zoomBefore = controller.currentZoom;
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+    await gesture.panZoomStart(feltPoint);
+    await tester.pump();
+    for (final scale in const [0.9, 0.8, 0.7]) {
+      await gesture.panZoomUpdate(feltPoint, scale: scale);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.panZoomEnd();
+    await tester.pumpAndSettle();
+
+    expect(controller.currentZoom, isNot(closeTo(zoomBefore, 0.001)),
+        reason: 'a trackpad pinch over the felt must change zoom');
+  });
+
+  testWidgets('trackpad pinch (scale != 1) over a card zooms the viewport, never moves the card', (tester) async {
+    // Same regression coverage as above, but landing on a card -- the
+    // scenario the owner actually hit. The per-card `GestureDetector`
+    // excludes `PointerDeviceKind.trackpad` (98240b7), so this pinch should
+    // never be seen by the card's own recognizers at all; it should reach
+    // the outer canvas `onScale*` exactly as it does over empty felt.
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(300, 300))]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    final cardCenter = tester.getCenter(find.byKey(const Key('card-a')));
+    final zoomBefore = controller.currentZoom;
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+    await gesture.panZoomStart(cardCenter);
+    await tester.pump();
+    for (final scale in const [0.9, 0.8, 0.7]) {
+      await gesture.panZoomUpdate(cardCenter, scale: scale);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.panZoomEnd();
+    await tester.pumpAndSettle();
+
+    expect(controller.currentZoom, isNot(closeTo(zoomBefore, 0.001)),
+        reason: 'a trackpad pinch over a card must still zoom the viewport');
+    expect(dataSource.movedCalls, isEmpty, reason: 'a trackpad pinch must never move a card');
+    expect(dataSource.movingCalls, isEmpty, reason: 'a trackpad pinch must never move a card');
+  });
+
+  testWidgets(
+    'trackpad pinch still zooms when the card content itself has a nested Scrollable',
+    (tester) async {
+      // pin_and_paper_card_renderer's real TaskCard (used by this package's
+      // example app, not by this widget itself) nests a
+      // `SingleChildScrollView` inside the card content to keep a tag `Wrap`
+      // from overflowing a fixed-height card. `Scrollable` doesn't exclude
+      // `PointerDeviceKind.trackpad` from its own drag recognizer, so it's
+      // worth confirming that structure -- reproduced locally here rather
+      // than adding a dependency on the card renderer -- can't win the
+      // gesture arena for a trackpad pinch away from the outer canvas.
+      final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(300, 300))]);
+      final controller = SpatialCanvasController();
+      await _pumpCanvas(
+        tester,
+        dataSource: dataSource,
+        controller: controller,
+        entityBuilder: (entity, isSelected) => Container(
+          key: Key('card-${entity.id}'),
+          color: Colors.grey,
+          child: const Column(
+            children: [
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Wrap(children: [SizedBox(width: 40, height: 20)]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      final cardCenter = tester.getCenter(find.byKey(const Key('card-a')));
+      final zoomBefore = controller.currentZoom;
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      await gesture.panZoomStart(cardCenter);
+      await tester.pump();
+      for (final scale in const [0.9, 0.8, 0.7]) {
+        await gesture.panZoomUpdate(cardCenter, scale: scale);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.panZoomEnd();
+      await tester.pumpAndSettle();
+
+      expect(controller.currentZoom, isNot(closeTo(zoomBefore, 0.001)),
+          reason: 'a nested Scrollable in card content must not swallow the trackpad pinch');
+    },
+  );
 
   testWidgets('mouse-button drag of a card still works alongside the trackpad exclusion', (tester) async {
     // Guards against a too-broad fix: excluding trackpad from the card's
