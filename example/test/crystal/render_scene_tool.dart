@@ -35,7 +35,9 @@ void main() {
     canvas.restore();
     final image = await recorder.endRecording().toImage(size.width.toInt(), size.height.toInt());
     final png = await image.toByteData(format: ui.ImageByteFormat.png);
-    final out = File('/tmp/claude-1000/-home-bluekitty-Documents-Git/5b744583-e2bf-49cb-9abd-b2389cfa39a5/scratchpad/stone_scene.png');
+    final out = File(
+      '/tmp/claude-1000/-home-bluekitty-Documents-Git/5b744583-e2bf-49cb-9abd-b2389cfa39a5/scratchpad/stone_scene_shadow_rework.png',
+    );
     out.writeAsBytesSync(png!.buffer.asUint8List());
     debugPrint('WROTE ${out.path}');
   });
