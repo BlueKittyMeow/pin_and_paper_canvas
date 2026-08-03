@@ -364,9 +364,14 @@ class AmethystChunkPainter extends CustomPainter {
   /// doesn't need a border to read as picked up.
   final bool isSelected;
 
-  /// Fixed camera pitch, matching the reference's `tilt = -0.21` constant
-  /// (not exposed as a parameter -- the reference never varies it either).
-  static const double _cameraTilt = -0.21;
+  /// Fixed camera pitch. DELIBERATE DEVIATION from the reference's -0.21:
+  /// the fitting-room demo rendered the stone in isolation from a low
+  /// oblique angle, but the desk is a flat-lay (cards seen dead-on from
+  /// above) and the projection mismatch made the stone read as a hovering
+  /// sticker (owner report 2026-08-03). -0.50 shows more top, less side --
+  /// closer to the desk's own viewpoint -- which together with the contact
+  /// shadow grounds it on the paper.
+  static const double _cameraTilt = -0.50;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -414,8 +419,29 @@ class AmethystChunkPainter extends CustomPainter {
     final frontFaces = projectedFaces.where((f) => f.normal.z > -0.02);
     final backFaces = projectedFaces.where((f) => f.normal.z <= -0.02);
 
-    // --- cast shadow + transmitted pool (painted first, beneath everything) ---
-    final poolOffset = -light.x * scale * 0.55;
+    // Silhouette + ground-contact geometry, from the *projected* mesh so it
+    // stays correct at any rotation/tilt: the contact line is where the
+    // stone's lowest screen-space vertices actually are, not a fixed baseY.
+    final allScreenPoints = projectedFaces.expand((f) => f.screenPoints).toList(growable: false);
+    final hull = _convexHull2D(allScreenPoints);
+    var lowestY = double.negativeInfinity;
+    for (final p in allScreenPoints) {
+      if (p.dy > lowestY) lowestY = p.dy;
+    }
+    var baseMinX = double.infinity, baseMaxX = double.negativeInfinity;
+    for (final p in allScreenPoints) {
+      if (p.dy > lowestY - scale * 0.20) {
+        if (p.dx < baseMinX) baseMinX = p.dx;
+        if (p.dx > baseMaxX) baseMaxX = p.dx;
+      }
+    }
+    final contactCx = (baseMinX + baseMaxX) / 2;
+    final contactCy = lowestY - scale * 0.02;
+    final contactRx = math.max((baseMaxX - baseMinX) / 2, scale * 0.25);
+
+    // --- cast shadow + transmitted pool (painted first, beneath everything),
+    // all anchored to the contact point rather than a nominal baseline ---
+    final poolOffset = -light.x * scale * 0.45;
 
     if (isSelected) {
       // Soft amber underglow, beneath even the shadow/pool -- the whole
@@ -424,8 +450,8 @@ class AmethystChunkPainter extends CustomPainter {
       // no outline.
       _paintPool(
         canvas,
-        centerX: centerX,
-        centerY: baseY,
+        centerX: contactCx,
+        centerY: contactCy,
         radius: scale * 1.15,
         innerColor: const Color.fromRGBO(196, 148, 26, 0.22),
         outerColor: const Color.fromRGBO(196, 148, 26, 0),
@@ -435,21 +461,33 @@ class AmethystChunkPainter extends CustomPainter {
 
     _paintPool(
       canvas,
-      centerX: centerX + poolOffset * 0.4,
-      centerY: baseY,
-      radius: scale * 0.95,
-      innerColor: const Color.fromRGBO(30, 18, 10, 0.42),
+      centerX: contactCx + poolOffset * 0.4,
+      centerY: contactCy,
+      radius: scale * 0.85,
+      innerColor: const Color.fromRGBO(30, 18, 10, 0.40),
       outerColor: const Color.fromRGBO(30, 18, 10, 0),
-      verticalSquish: 0.32,
+      verticalSquish: 0.30,
     );
     _paintPool(
       canvas,
-      centerX: centerX + poolOffset * 1.15,
-      centerY: baseY,
-      radius: scale * 0.72,
+      centerX: contactCx + poolOffset * 0.95,
+      centerY: contactCy,
+      radius: scale * 0.66,
       innerColor: Color.fromRGBO(139, 92, 201, (0.30 + 0.14 * inclusions).clamp(0.0, 1.0)),
       outerColor: const Color.fromRGBO(139, 92, 201, 0),
-      verticalSquish: 0.28,
+      verticalSquish: 0.26,
+    );
+    // Contact shadow: the tight, dark occlusion right where stone meets
+    // paper. This is the "it is actually resting on something" cue -- the
+    // soft pools alone read as hovering.
+    _paintPool(
+      canvas,
+      centerX: contactCx,
+      centerY: contactCy,
+      radius: contactRx * 1.05,
+      innerColor: const Color.fromRGBO(18, 10, 6, 0.50),
+      outerColor: const Color.fromRGBO(18, 10, 6, 0),
+      verticalSquish: 0.20,
     );
 
     // --- back faces: dimmed interior ---
@@ -460,9 +498,8 @@ class AmethystChunkPainter extends CustomPainter {
       canvas.drawPath(path, Paint()..color = HSLColor.fromAHSL(0.85, 270, 0.38, lightness).toColor());
     }
 
-    // --- fog/veils, clipped to the projected silhouette ---
-    final allScreenPoints = projectedFaces.expand((f) => f.screenPoints).toList(growable: false);
-    final hull = _convexHull2D(allScreenPoints);
+    // --- fog/veils, clipped to the projected silhouette (hull computed
+    // above, alongside the contact-shadow geometry) ---
     if (hull.length > 2 && inclusions > 0) {
       canvas.save();
       canvas.clipPath(_polygonPath(hull));
