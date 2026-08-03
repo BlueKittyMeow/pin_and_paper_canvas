@@ -682,15 +682,48 @@ class AmethystChunkPainter extends CustomPainter {
       final lightness = (0.20 + lambert * 0.44 + spec * 0.22).clamp(0.0, 1.0);
       final path = _polygonPath(f.screenPoints);
       canvas.drawPath(path, Paint()..color = HSLColor.fromAHSL(faceAlpha, hue, saturation, lightness).toColor());
+    }
 
-      final strokeLightness = (0.60 + spec * 0.30).clamp(0.0, 1.0);
-      canvas.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = HSLColor.fromAHSL(0.28, 280, 0.60, strokeLightness).toColor(),
-      );
+    // --- facet strokes, second pass, clipped INSIDE the silhouette ---
+    // Stroking each face directly also traced the stone's outer rim with a
+    // pale line, which read as a sticker outline against the desk (owner
+    // report 2026-08-03). Clipping the stroke pass to a slightly shrunken
+    // silhouette keeps the facet sparkle on interior edges while the rim
+    // stays clean fill-against-desk.
+    if (hull.length > 2) {
+      var hullCx = 0.0, hullCy = 0.0;
+      for (final p in hull) {
+        hullCx += p.dx;
+        hullCy += p.dy;
+      }
+      hullCx /= hull.length;
+      hullCy /= hull.length;
+      const rimInsetPx = 2.5;
+      final insetHull = [
+        for (final p in hull)
+          () {
+            final dx = p.dx - hullCx, dy = p.dy - hullCy;
+            final d = math.sqrt(dx * dx + dy * dy);
+            final k = d <= rimInsetPx ? 0.0 : (d - rimInsetPx) / d;
+            return Offset(hullCx + dx * k, hullCy + dy * k);
+          }(),
+      ];
+      canvas.save();
+      canvas.clipPath(_polygonPath(insetHull));
+      for (final f in frontFaces) {
+        final lambert = math.max(0.0, f.normal.dot(light));
+        final reflectZ = light.z - 2 * lambert * f.normal.z;
+        final spec = math.pow(math.max(0.0, -reflectZ), 18).toDouble() * specularBoost;
+        final strokeLightness = (0.60 + spec * 0.30).clamp(0.0, 1.0);
+        canvas.drawPath(
+          _polygonPath(f.screenPoints),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = HSLColor.fromAHSL(0.28, 280, 0.60, strokeLightness).toColor(),
+        );
+      }
+      canvas.restore();
     }
 
     // --- inner contact occlusion, painted last ---
