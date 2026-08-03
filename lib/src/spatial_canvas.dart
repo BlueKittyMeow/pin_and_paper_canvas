@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/widgets.dart';
 
 import 'spatial_canvas_controller.dart';
@@ -59,6 +60,15 @@ typedef SpatialEntityBuilder = Widget Function(SpatialEntity entity, bool isSele
 ///   constructor for API-shape compatibility with later milestones but are
 ///   not yet wired to any gesture), multi-select and inertia are all
 ///   explicitly deferred past this MVP milestone (fable-review.md §1.6/§2).
+/// - The per-card `GestureDetector`'s `supportedDevices` deliberately omits
+///   `PointerDeviceKind.trackpad` (touch/mouse/stylus/invertedStylus stay
+///   supported, so mouse-button card drags are unaffected). A two-finger
+///   trackpad pan/pinch arrives as a single `PointerPanZoom*` gesture, not
+///   discrete down events; without this exclusion, hovering that gesture
+///   over a card let the card's own pan recognizer claim it and drag the
+///   card instead of the desk. The outer `GestureDetector`'s `onScale*`
+///   recognizer is left with its default (unrestricted) `supportedDevices`
+///   so it keeps handling trackpad pan/zoom for the viewport.
 ///
 /// ## Write policy
 /// During a drag, only local widget state changes (a preview offset); the
@@ -301,6 +311,17 @@ class _SpatialCanvasState extends State<SpatialCanvas>
         child: RepaintBoundary(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
+            // Deliberately excludes PointerDeviceKind.trackpad (see this
+            // class's doc comment, "Gesture arbitration"): a two-finger
+            // trackpad pan/pinch must always fall through to the outer
+            // canvas GestureDetector's onScale* viewport handling, never be
+            // claimed by this card's own pan/tap recognizers.
+            supportedDevices: const {
+              PointerDeviceKind.touch,
+              PointerDeviceKind.mouse,
+              PointerDeviceKind.stylus,
+              PointerDeviceKind.invertedStylus,
+            },
             onTap: () => _handleEntityTap(entity),
             onDoubleTap: () => widget.dataSource.onEntityDoubleTapped(entity.id),
             onPanStart: (_) => _handlePanStart(entity),

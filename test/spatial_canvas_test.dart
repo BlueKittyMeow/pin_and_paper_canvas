@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pin_and_paper_canvas/spatial_canvas.dart';
@@ -484,5 +485,57 @@ void main() {
     // because it's now the selected card.
     expect(_stackChildOrder(tester), ['a', 'b'],
         reason: 'the selected card must render above an overlapping unselected one');
+  });
+
+  testWidgets('trackpad pan/zoom over a card pans the viewport and never moves the card', (tester) async {
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(300, 300))]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    final cardCenter = tester.getCenter(find.byKey(const Key('card-a')));
+    final rectBefore = controller.visibleRect;
+
+    // A two-finger trackpad pan arrives as a single PointerPanZoom* gesture
+    // (not discrete down/move pointer events), landing right on top of a
+    // card -- exactly the scenario that used to let the card's own pan
+    // recognizer claim it and drag the card instead of the desk.
+    final trackpadGesture = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+    await trackpadGesture.panZoomStart(cardCenter);
+    await tester.pump();
+    for (final pan in const [Offset(-30, -20), Offset(-60, -40), Offset(-90, -60)]) {
+      await trackpadGesture.panZoomUpdate(cardCenter, pan: pan);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await trackpadGesture.panZoomEnd();
+    await tester.pumpAndSettle();
+
+    expect(dataSource.movedCalls, isEmpty, reason: 'trackpad gestures must never move a card');
+    expect(dataSource.movingCalls, isEmpty, reason: 'trackpad gestures must never move a card');
+    expect(controller.visibleRect, isNot(equals(rectBefore)),
+        reason: 'trackpad gestures must still pan/zoom the viewport');
+  });
+
+  testWidgets('mouse-button drag of a card still works alongside the trackpad exclusion', (tester) async {
+    // Guards against a too-broad fix: excluding trackpad from the card's
+    // GestureDetector must not accidentally exclude mouse too.
+    const original = Offset(100, 100);
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: original)]);
+    await _pumpCanvas(tester, dataSource: dataSource);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('card-a'))),
+      kind: PointerDeviceKind.mouse,
+    );
+    const totalScreenDelta = Offset(120, 80);
+    const steps = 20;
+    final stepDelta = Offset(totalScreenDelta.dx / steps, totalScreenDelta.dy / steps);
+    for (var i = 0; i < steps; i++) {
+      await gesture.moveBy(stepDelta);
+      await tester.pump(const Duration(milliseconds: 8));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(dataSource.movedCalls, hasLength(1));
   });
 }
