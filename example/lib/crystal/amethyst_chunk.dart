@@ -115,7 +115,31 @@ List<Vec3> chunkCloud(int seed, int n) {
     pts.add(Vec3(x, y, z));
   }
   final minY = pts.map((p) => p.y).reduce(math.min);
-  return pts.map((p) => Vec3(p.x, p.y - minY, p.z)).toList(growable: false);
+  final shifted = pts.map((p) => Vec3(p.x, p.y - minY, p.z)).toList();
+
+  // Flat-cut the base (owner decision 2026-08-03, deviating from the
+  // fitting-room reference): real display crystals are cut flat to sit on a
+  // shelf, and a planar base makes the contact line straight -- the
+  // "invisible shim" under an irregular base becomes geometrically
+  // impossible. Everything below the cut plane drops to y=0; if the jitter
+  // left fewer than four points that low, the four lowest are flattened so
+  // the hull always gains a stable base facet.
+  const cutHeight = 0.22;
+  var flattened = 0;
+  for (var i = 0; i < shifted.length; i++) {
+    if (shifted[i].y < cutHeight) {
+      shifted[i] = Vec3(shifted[i].x, 0, shifted[i].z);
+      flattened++;
+    }
+  }
+  if (flattened < 4) {
+    final byHeight = List<int>.generate(shifted.length, (i) => i)
+      ..sort((a, b) => shifted[a].y.compareTo(shifted[b].y));
+    for (final i in byHeight.take(4)) {
+      shifted[i] = Vec3(shifted[i].x, 0, shifted[i].z);
+    }
+  }
+  return List.unmodifiable(shifted);
 }
 
 /// Port of the reference's `hull3D(pts)`: brute-force convex hull by testing
@@ -437,7 +461,6 @@ class AmethystChunkPainter extends CustomPainter {
     }
     final contactCx = (baseMinX + baseMaxX) / 2;
     final contactCy = lowestY - scale * 0.02;
-    final contactRx = math.max((baseMaxX - baseMinX) / 2, scale * 0.25);
 
     // --- cast shadow + transmitted pool (painted first, beneath everything),
     // all anchored to the contact point rather than a nominal baseline ---
@@ -478,17 +501,31 @@ class AmethystChunkPainter extends CustomPainter {
       verticalSquish: 0.26,
     );
     // Contact shadow: the tight, dark occlusion right where stone meets
-    // paper. This is the "it is actually resting on something" cue -- the
-    // soft pools alone read as hovering.
-    _paintPool(
-      canvas,
-      centerX: contactCx,
-      centerY: contactCy,
-      radius: contactRx * 1.05,
-      innerColor: const Color.fromRGBO(18, 10, 6, 0.50),
-      outerColor: const Color.fromRGBO(18, 10, 6, 0),
-      verticalSquish: 0.20,
-    );
+    // paper -- the "it is actually resting on something" cue. NOT a
+    // bounding-box ellipse (owner report: that pokes out below the base's
+    // higher side like an invisible shim). Instead a band that follows the
+    // hull's bottom contour: its top edge rides the silhouette and its
+    // drop tapers to nothing where the body lifts away from the paper.
+    final bandDepth = scale * 0.30;
+    final bottomChain = hull.where((p) => p.dy > lowestY - bandDepth).toList()
+      ..sort((a, b) => a.dx.compareTo(b.dx));
+    if (bottomChain.length >= 2) {
+      final contour = Path()..moveTo(bottomChain.first.dx, bottomChain.first.dy + 1);
+      for (final p in bottomChain.skip(1)) {
+        contour.lineTo(p.dx, p.dy + 1);
+      }
+      for (final p in bottomChain.reversed) {
+        final closeness = (1 - (lowestY - p.dy) / bandDepth).clamp(0.0, 1.0);
+        contour.lineTo(p.dx, p.dy + 1 + scale * 0.12 * closeness);
+      }
+      contour.close();
+      canvas.drawPath(
+        contour,
+        Paint()
+          ..color = const Color.fromRGBO(18, 10, 6, 0.42)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.045),
+      );
+    }
 
     // --- back faces: dimmed interior ---
     for (final f in backFaces) {

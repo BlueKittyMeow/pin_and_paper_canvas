@@ -121,10 +121,29 @@ void main() {
   });
 
   group('AmethystChunkMesh (the baked seed-23 mesh used by the painter)', () {
-    test('computes 32 outward-oriented facets for seed 23, n=18', () {
-      // Cross-checked against the JS reference's own hull3D(chunkCloud(23,
-      // 18)).length, run unmodified in Node.js.
-      expect(AmethystChunkMesh.faces, hasLength(32));
+    test('computes a well-formed faceted mesh for seed 23, n=18', () {
+      // The pre-flat-cut mesh was cross-checked at exactly 32 faces against
+      // the JS reference's hull3D(chunkCloud(23,18)) in Node.js. The flat
+      // base cut (owner decision 2026-08-03) deliberately deviates from the
+      // reference, so the count is asserted as a sane range rather than a
+      // reference-pinned constant; the hull-property tests above remain the
+      // real correctness guarantee.
+      expect(AmethystChunkMesh.faces.length, greaterThanOrEqualTo(28));
+      expect(AmethystChunkMesh.faces.length, lessThanOrEqualTo(80));
+      for (final face in AmethystChunkMesh.faces) {
+        expect(face, hasLength(3));
+      }
+    });
+
+    test('flat-cut base: at least four vertices sit exactly on y=0', () {
+      // The cut plane guarantees a stable planar base so the stone sits
+      // flat on the desk -- no vertex may dip below it either.
+      final vertices = AmethystChunkMesh.faces.expand((f) => f).toList();
+      final onPlane = vertices.where((v) => v.y == 0).map((v) => '${v.x},${v.z}').toSet();
+      expect(onPlane.length, greaterThanOrEqualTo(4));
+      for (final v in vertices) {
+        expect(v.y, greaterThanOrEqualTo(0));
+      }
     });
 
     test('is computed once and cached -- repeated access returns the identical list', () {

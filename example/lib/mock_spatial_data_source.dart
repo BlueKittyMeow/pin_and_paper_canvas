@@ -1,8 +1,11 @@
+import 'dart:async' show unawaited;
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 import 'package:pin_and_paper_card_renderer/card_renderer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Number of mock cards the example seeds the canvas with.
 ///
@@ -145,7 +148,62 @@ class MockSpatialDataSource extends SpatialDataSource {
     : _entities = [
         ...List.generate(count, (i) => _generateMockEntity(i, canvasSize)),
         _generateAmethystEntity(count, canvasSize),
-      ];
+      ] {
+    initialized = _restore();
+  }
+
+  // -- Desk-layout persistence (example-level stand-in for Milestone 4's
+  // real canvas_x/canvas_y columns): entity positions and the amethyst's
+  // size survive restarts via shared_preferences. z-order deliberately
+  // does not -- it re-derives from interaction, same as a real desk.
+  static const _kPositionsKey = 'example_entity_positions';
+  static const _kAmethystWidthKey = 'example_amethyst_width';
+
+  /// Completes when any previously saved layout has been applied. Awaited
+  /// by tests; the app just lets it land whenever it lands (a frame or two
+  /// after first paint, via notifyListeners).
+  late final Future<void> initialized;
+
+  Future<void> _restore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kPositionsKey);
+      if (raw != null) {
+        final saved = jsonDecode(raw) as Map<String, dynamic>;
+        for (final entity in _entities) {
+          final xy = saved[entity.id];
+          if (xy is List && xy.length == 2) {
+            final position = Offset((xy[0] as num).toDouble(), (xy[1] as num).toDouble());
+            if (entity is MockCardEntity) entity.position = position;
+            if (entity is AmethystEntity) entity.position = position;
+          }
+        }
+      }
+      final savedWidth = prefs.getDouble(_kAmethystWidthKey);
+      if (savedWidth != null) {
+        for (final stone in _entities.whereType<AmethystEntity>()) {
+          stone.size = Size(savedWidth, savedWidth * (120 / 150));
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // No preferences backend (e.g. plain widget tests): stay in-memory.
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _kPositionsKey,
+        jsonEncode({for (final e in _entities) e.id: [e.position.dx, e.position.dy]}),
+      );
+      final stone = _entities.whereType<AmethystEntity>().first;
+      await prefs.setDouble(_kAmethystWidthKey, stone.size.width);
+    } catch (_) {
+      // Same: persistence is best-effort in the example.
+    }
+  }
 
   static MockCardEntity _generateMockEntity(int index, Size canvasSize) {
     const margin = 20.0;
@@ -258,6 +316,7 @@ class MockSpatialDataSource extends SpatialDataSource {
     entity.position += Offset((oldSize.width - newSize.width) / 2, (oldSize.height - newSize.height) / 2);
     entity.size = newSize;
     notifyListeners();
+    unawaited(_persist());
   }
 
   @override
@@ -290,6 +349,7 @@ class MockSpatialDataSource extends SpatialDataSource {
       entity.zIndex = _nextZIndex++;
     }
     notifyListeners();
+    unawaited(_persist());
   }
 
   @override

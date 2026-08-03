@@ -39,6 +39,10 @@ dependencies:
   pin_and_paper_card_renderer:
     path: ../../pin_and_paper_card_renderer
 
+  # Desk-layout persistence (positions + amethyst size across restarts) --
+  # example-level stand-in for Milestone 4's real DB columns.
+  shared_preferences: ^2.3.0
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
