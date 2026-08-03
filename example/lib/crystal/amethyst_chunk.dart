@@ -460,6 +460,19 @@ double _wrapHue(double hue) => ((hue % 360) + 360) % 360;
 /// back-face interior (dimmed) -> fog/veil inclusions clipped to the
 /// projected silhouette -> front faces with lambert+specular shading.
 class AmethystChunkPainter extends CustomPainter {
+  /// Diagnostic taps (set on every paint; read by render_scene_tool.dart to
+  /// overlay the painter's own geometry). Debug/test aid only.
+  @visibleForTesting
+  static List<Offset>? debugLowerSilhouette;
+  @visibleForTesting
+  static List<Offset>? debugCastHull;
+
+  /// Debug/test aid: when true, paint() stops after the ground passes
+  /// (cast shadow, pool, AO) — no stone — so the shadow layers can be
+  /// inspected naked.
+  @visibleForTesting
+  static bool debugGroundOnly = false;
+
   AmethystChunkPainter({
     required this.rotationY,
     required this.lightAzimuthDegrees,
@@ -568,7 +581,8 @@ class AmethystChunkPainter extends CustomPainter {
     // stone itself -- the silhouette projected along the light, each point
     // displaced proportionally to its height above the contact line. Base
     // points stay pinned; the top gets thrown furthest. ---
-    final shadowDir = Offset(-light.x, 0.85);
+    final lowerSilhouette = _lowerSilhouetteChain(hull);
+    AmethystChunkPainter.debugLowerSilhouette = lowerSilhouette;
 
     // Selection deliberately paints NOTHING on the ground: the earlier amber
     // underglow washed light across the very contact zone the shadow work
@@ -576,45 +590,84 @@ class AmethystChunkPainter extends CustomPainter {
     // reports, pixel-profiled 2026-08-03). A selected stone instead sparkles
     // harder — see specularBoost and the stroke treatment below.
 
-    // Cast shadow: the hull silhouette skewed onto the desk. Height above
-    // the contact line becomes displacement along [shadowDir], foreshortened
-    // (0.5) so it reads as paper-flat, not a standing mirror image.
-    Offset castPoint(Offset p) {
-      final heightAboveBase = (contactCy - p.dy).clamp(0.0, double.infinity);
-      return Offset(
-        p.dx + shadowDir.dx * heightAboveBase * 0.5,
-        contactCy + shadowDir.dy * heightAboveBase * 0.5,
-      );
-    }
 
     if (hull.length > 2) {
-      final castHull = hull.map(castPoint).toList(growable: false);
-      final tail = Offset(
-        contactCx + shadowDir.dx * scale * 0.9,
-        contactCy + shadowDir.dy * scale * 0.9,
+      // GEMINI-BASE CHIMERA (owner verdict 2026-08-03: Gemini's soft blob
+      // halo won the three-model shadow competition; softened further, with
+      // Claude's contact line + caustic accents). The shadow polygon is the
+      // convex hull of {throw-projected points} UNION {the stone's own
+      // footprint hull} — a light gap is geometrically impossible, and one
+      // shape + one paint means no additive banding. Big blur = painterly.
+      final shadowDx = -light.x;
+      const shadowDy = 0.55;
+      final shadowPts = <Offset>[];
+      for (final p in hull) {
+        final h = (contactCy - p.dy).clamp(0.0, scale * 1.5);
+        // Asymmetric lean: shadow (left) side reaches, lit (right) relaxes.
+        final sideFactor = p.dx < contactCx ? 1.0 : 0.40;
+        // Top edge pushed up into the silhouette so the blur completes
+        // under the stone — no halo at the seam.
+        final overlapY = p.dy > contactCy - scale * 0.35 ? -scale * 0.12 : 0.0;
+        shadowPts.add(Offset(
+          p.dx + shadowDx * h * 0.48 * sideFactor,
+          p.dy + shadowDy * h * 0.48 * sideFactor + overlapY,
+        ));
+      }
+      // Anchor only the LOWER body as footprint: the full hull made the
+      // blur read as an aura around the whole stone, not a ground shadow.
+      for (final p in hull) {
+        if (p.dy > contactCy - scale * 0.55) shadowPts.add(p);
+      }
+      final shadowHull = _convexHull2D(shadowPts);
+      final shadowPath = _polygonPath(shadowHull);
+      canvas.drawPath(
+        shadowPath,
+        Paint()
+          ..color = const Color.fromRGBO(20, 10, 8, 0.42)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.055),
       );
-      final castPaint = Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(contactCx, contactCy),
-          tail,
-          // Dark enough to register on the dark kraft, not just on cream
-          // cards (owner report: grounding read worse on the corkboard).
-          [const Color.fromRGBO(24, 14, 8, 0.52), const Color.fromRGBO(24, 14, 8, 0.06)],
-        )
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.035);
-      canvas.drawPath(_polygonPath(castHull), castPaint);
 
-      // Transmitted purple: light that came *through* the stone lands inside
-      // the very shadow the stone casts.
+      // Claude accent 1: a soft contact-weight line along the flat base —
+      // the "actually bearing weight" cue, gentler than the engineered
+      // versions (thin, low alpha, real blur).
+      canvas.drawLine(
+        Offset(baseMinX + scale * 0.03, lowestY),
+        Offset(baseMaxX - scale * 0.03, lowestY),
+        Paint()
+          ..color = const Color.fromRGBO(14, 8, 6, 0.38)
+          ..strokeWidth = scale * 0.030
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.014),
+      );
+
+      // Claude accent 2: the transmitted caustic — two overlapping soft
+      // pools (irregular, elongated) hugging the base on the shadow side,
+      // clipped to shadow-or-footprint so purple never touches clean paper.
+      canvas.save();
+      final glowClip = Path()
+        ..addPath(shadowPath, Offset.zero)
+        ..addPath(_polygonPath(hull), Offset.zero);
+      canvas.clipPath(glowClip);
+      final poolAlpha = (0.40 + 0.14 * inclusions).clamp(0.0, 1.0);
       _paintPool(
         canvas,
-        centerX: contactCx + shadowDir.dx * scale * 0.42,
-        centerY: contactCy + shadowDir.dy * scale * 0.42,
-        radius: scale * 0.48,
-        innerColor: Color.fromRGBO(149, 90, 219, (0.42 + 0.14 * inclusions).clamp(0.0, 1.0)),
+        centerX: contactCx + shadowDx * scale * 0.26,
+        centerY: contactCy + shadowDy * scale * 0.30,
+        radius: scale * 0.42,
+        innerColor: Color.fromRGBO(155, 92, 222, poolAlpha),
         outerColor: const Color.fromRGBO(139, 92, 201, 0),
-        verticalSquish: 0.5,
+        verticalSquish: 0.42,
       );
+      _paintPool(
+        canvas,
+        centerX: contactCx + shadowDx * scale * 0.40 - scale * 0.04,
+        centerY: contactCy + shadowDy * scale * 0.34,
+        radius: scale * 0.22,
+        innerColor: Color.fromRGBO(172, 112, 238, poolAlpha * 0.9),
+        outerColor: const Color.fromRGBO(139, 92, 201, 0),
+        verticalSquish: 0.45,
+      );
+      canvas.restore();
     }
     // Contact shadow: the tight, dark occlusion right where stone meets
     // paper -- the "it is actually resting on something" cue. NOT a
@@ -630,47 +683,8 @@ class AmethystChunkPainter extends CustomPainter {
     // the region bounded above by the full lower-silhouette contour and
     // below by the contact line, so darkness climbs to meet the stone's
     // actual underside at every column.
-    // Ambient-occlusion band under the belly: hugs the full lower-silhouette
-    // contour with a LIMITED drop that tapers at the horizontal extremes.
-    // (The previous full-depth "skirt" filled clear down to the contact line
-    // even under the mid-height overhangs, producing square shadow wings
-    // either side of the base — owner report. An overhang blocks ambient
-    // light softly; only the cast blob carries the hard directional shadow.)
-    final lowerSilhouette = _lowerSilhouetteChain(hull);
-    if (lowerSilhouette.length >= 2) {
-      final n = lowerSilhouette.length;
-      final ao = Path()
-        ..moveTo(lowerSilhouette.first.dx, lowerSilhouette.first.dy + 1);
-      for (final p in lowerSilhouette.skip(1)) {
-        ao.lineTo(p.dx, p.dy + 1);
-      }
-      for (var i = n - 1; i >= 0; i--) {
-        final p = lowerSilhouette[i];
-        final t = n == 1 ? 0.5 : i / (n - 1);
-        final endTaper = (math.min(t, 1 - t) / 0.2).clamp(0.3, 1.0);
-        ao.lineTo(p.dx, p.dy + 1 + scale * 0.13 * endTaper);
-      }
-      ao.close();
-      canvas.drawPath(
-        ao,
-        Paint()
-          ..color = const Color.fromRGBO(20, 11, 8, 0.40)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.035),
-      );
-    }
 
-    // Opaque interior backing: the glassy facets composite at ~66% alpha, so
-    // without this the desk/card shows THROUGH the stone at its rim — a
-    // bright edge exactly where shading is darkest (owner spotted the light
-    // edge along the shaded flanks). A deep-violet fill under the facet
-    // passes means glassiness reveals the stone's interior, never the paper
-    // behind it.
-    if (hull.length > 2) {
-      canvas.drawPath(
-        _polygonPath(hull),
-        Paint()..color = const Color.fromRGBO(26, 14, 40, 0.94),
-      );
-    }
+    if (AmethystChunkPainter.debugGroundOnly) return;
 
     // --- back faces: dimmed interior ---
     for (final f in backFaces) {

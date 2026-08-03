@@ -13,25 +13,58 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('render scene png', () async {
-    const size = Size(500, 420);
+    const size = Size(980, 760);
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     // Kraft-ish ground
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF7a5c3e));
     // Cream card occupying the upper-left area, like the owner's screenshots
     canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(30, 40, 300, 240), const Radius.circular(4)),
+      RRect.fromRectAndRadius(const Rect.fromLTWH(30, 40, 920, 680), const Radius.circular(4)),
       Paint()..color = const Color(0xFFFDF6E3),
     );
     canvas.save();
-    canvas.translate(120, 60); // stone straddling the card's lower region
+    canvas.translate(200, 80); // stone straddling the card's lower region
+    AmethystChunkPainter.debugGroundOnly = false;
     AmethystChunkPainter(
       rotationY: AmethystChunkMesh.baseAlignedYaw,
       lightAzimuthDegrees: kDeskLightAzimuth,
       inclusions: 0.55,
       glassiness: 0.62,
       isSelected: false,
-    ).paint(canvas, const Size(300, 240));
+    ).paint(canvas, const Size(620, 500));
+    AmethystChunkPainter.debugLowerSilhouette = null;
+    AmethystChunkPainter.debugCastHull = null;
+    // Diagnostic overlays: where the painter THINKS its shadow geometry is.
+    final silhouette = AmethystChunkPainter.debugLowerSilhouette;
+    if (silhouette != null && silhouette.length > 1) {
+      final p = Path()..moveTo(silhouette.first.dx, silhouette.first.dy);
+      for (final pt in silhouette.skip(1)) {
+        p.lineTo(pt.dx, pt.dy);
+      }
+      canvas.drawPath(
+        p,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = const Color(0xFF00FF66),
+      );
+    }
+    final cast = AmethystChunkPainter.debugCastHull;
+    if (cast != null && cast.length > 2) {
+      final p = Path()..moveTo(cast.first.dx, cast.first.dy);
+      for (final pt in cast.skip(1)) {
+        p.lineTo(pt.dx, pt.dy);
+      }
+      p.close();
+      canvas.drawPath(
+        p,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = const Color(0xFFFF3355),
+      );
+    }
     canvas.restore();
     final image = await recorder.endRecording().toImage(size.width.toInt(), size.height.toInt());
     final png = await image.toByteData(format: ui.ImageByteFormat.png);
