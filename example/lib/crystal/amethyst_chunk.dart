@@ -692,6 +692,33 @@ class AmethystChunkPainter extends CustomPainter {
           ..color = HSLColor.fromAHSL(0.28, 280, 0.60, strokeLightness).toColor(),
       );
     }
+
+    // --- inner contact occlusion, painted last ---
+    // The pale facet strokes above put a highlight along the stone's bottom
+    // edge -- exactly where contact darkness belongs, and against the cast
+    // shadow it read as a light line under the stone (owner report
+    // 2026-08-03). Shade the stone's own base from inside: a dark violet
+    // band rising from the bottom contour, clipped to the silhouette so it
+    // only ever darkens the stone, never the paper.
+    if (bottomChain.length >= 2 && hull.length > 2) {
+      canvas.save();
+      canvas.clipPath(_polygonPath(hull));
+      final occlusion = Path()..moveTo(bottomChain.first.dx, bottomChain.first.dy + 2);
+      for (final p in bottomChain.skip(1)) {
+        occlusion.lineTo(p.dx, p.dy + 2);
+      }
+      for (final p in bottomChain.reversed) {
+        occlusion.lineTo(p.dx, p.dy - scale * 0.09);
+      }
+      occlusion.close();
+      canvas.drawPath(
+        occlusion,
+        Paint()
+          ..color = const Color.fromRGBO(30, 16, 44, 0.32)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.03),
+      );
+      canvas.restore();
+    }
   }
 
   @override
