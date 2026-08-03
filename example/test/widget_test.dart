@@ -13,6 +13,8 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('$kMockCardCount cards'), findsOneWidget);
-    expect(find.text('Card 0'), findsOneWidget);
+    // Milestone 2 preview: mock entities render as real TaskCards with
+    // believable titles (cycled, so the first title appears more than once).
+    expect(find.text('Water the plants'), findsWidgets);
   });
 }

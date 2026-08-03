@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pin_and_paper_canvas/spatial_canvas.dart';
+import 'package:pin_and_paper_card_renderer/card_renderer.dart';
 
 import 'mock_spatial_data_source.dart';
 
@@ -101,21 +102,10 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
     );
   }
 
+  // Milestone 2 preview: the real card renderer on the mock desk. Milestone 4
+  // repeats this wiring in the main app with real tasks.
   Widget _buildMockCard(SpatialEntity entity, bool isSelected) {
     final mock = entity as MockCardEntity;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: mock.color,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: isSelected ? Colors.white : Colors.black26, width: isSelected ? 3 : 1),
-        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(1, 2))],
-      ),
-      child: Center(
-        child: Text(
-          mock.label,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
+    return TaskCard(data: mock.cardData, isSelected: isSelected);
   }
 }
