@@ -630,22 +630,45 @@ class AmethystChunkPainter extends CustomPainter {
     // the region bounded above by the full lower-silhouette contour and
     // below by the contact line, so darkness climbs to meet the stone's
     // actual underside at every column.
+    // Ambient-occlusion band under the belly: hugs the full lower-silhouette
+    // contour with a LIMITED drop that tapers at the horizontal extremes.
+    // (The previous full-depth "skirt" filled clear down to the contact line
+    // even under the mid-height overhangs, producing square shadow wings
+    // either side of the base — owner report. An overhang blocks ambient
+    // light softly; only the cast blob carries the hard directional shadow.)
     final lowerSilhouette = _lowerSilhouetteChain(hull);
     if (lowerSilhouette.length >= 2) {
-      final skirtBottom = lowestY + scale * 0.05;
-      final skirt = Path()
+      final n = lowerSilhouette.length;
+      final ao = Path()
         ..moveTo(lowerSilhouette.first.dx, lowerSilhouette.first.dy + 1);
       for (final p in lowerSilhouette.skip(1)) {
-        skirt.lineTo(p.dx, p.dy + 1);
+        ao.lineTo(p.dx, p.dy + 1);
       }
-      skirt.lineTo(lowerSilhouette.last.dx, skirtBottom);
-      skirt.lineTo(lowerSilhouette.first.dx, skirtBottom);
-      skirt.close();
+      for (var i = n - 1; i >= 0; i--) {
+        final p = lowerSilhouette[i];
+        final t = n == 1 ? 0.5 : i / (n - 1);
+        final endTaper = (math.min(t, 1 - t) / 0.2).clamp(0.3, 1.0);
+        ao.lineTo(p.dx, p.dy + 1 + scale * 0.13 * endTaper);
+      }
+      ao.close();
       canvas.drawPath(
-        skirt,
+        ao,
         Paint()
-          ..color = const Color.fromRGBO(18, 10, 6, 0.48)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.03),
+          ..color = const Color.fromRGBO(20, 11, 8, 0.40)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.035),
+      );
+    }
+
+    // Opaque interior backing: the glassy facets composite at ~66% alpha, so
+    // without this the desk/card shows THROUGH the stone at its rim — a
+    // bright edge exactly where shading is darkest (owner spotted the light
+    // edge along the shaded flanks). A deep-violet fill under the facet
+    // passes means glassiness reveals the stone's interior, never the paper
+    // behind it.
+    if (hull.length > 2) {
+      canvas.drawPath(
+        _polygonPath(hull),
+        Paint()..color = const Color.fromRGBO(26, 14, 40, 0.94),
       );
     }
 
