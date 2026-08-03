@@ -467,7 +467,15 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    // After release: no longer dragging, back to plain (zIndex, id) order.
+    // After release: no longer dragging, but drag-start selected 'lo'
+    // (see 'starting a drag selects the card') and selected cards render
+    // above unselected ones -- so 'lo' stays on top until deselected.
+    expect(_stackChildOrder(tester), ['hi', 'lo']);
+
+    // Deselect by tapping empty felt: now plain (zIndex, id) order returns.
+    await tester.tapAt(const Offset(700, 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
     expect(_stackChildOrder(tester), ['lo', 'hi']);
   });
 
