@@ -60,6 +60,48 @@ const List<String> _mockNotes = [
   "Router UI shows conditional forwarding as enabled but it's still not resolving local hostnames reliably.",
 ];
 
+/// The amethyst chunk desk object: a fixed-pose mineral sitting on the desk
+/// alongside the mock cards, one-of-a-kind (there's exactly one, id
+/// `'amethyst-1'`) rather than generated in bulk like [MockCardEntity].
+///
+/// Unlike a card's `rotation` (this class's own [rotation], which the
+/// canvas's `Transform.rotate` applies as ordinary 2D layout rotation, in
+/// degrees), [rotationY] is the crystal's 3D mesh yaw around its vertical
+/// axis, consumed directly by `AmethystChunkPainter`
+/// (`example/lib/crystal/amethyst_chunk.dart`). It's fixed at construction
+/// and never changes -- this entity keeps the one pose it was built with for
+/// its entire lifetime, including across drags (dragging moves [position]
+/// only; see [MockSpatialDataSource.onEntityMoved]'s type-check branch for
+/// this entity). [rotation] itself stays permanently 0: nothing in this POC
+/// drives 2D layout rotation for the stone.
+class AmethystEntity implements SpatialEntity {
+  AmethystEntity({
+    required this.id,
+    required this.position,
+    required this.rotationY,
+    this.size = const Size(150, 120),
+    this.zIndex = 0,
+  });
+
+  @override
+  final String id;
+
+  @override
+  Offset position;
+
+  /// The crystal mesh's fixed yaw, in radians. See this class's doc comment.
+  final double rotationY;
+
+  @override
+  double get rotation => 0;
+
+  @override
+  final Size size;
+
+  @override
+  int zIndex;
+}
+
 /// A mutable mock entity. Not exported -- this is example-app-only scaffolding
 /// standing in for a real `TaskSpatialEntity` (Milestone 4's job).
 class MockCardEntity implements SpatialEntity {
@@ -97,7 +139,10 @@ class MockCardEntity implements SpatialEntity {
 /// pattern).
 class MockSpatialDataSource extends SpatialDataSource {
   MockSpatialDataSource({int count = kMockCardCount, Size canvasSize = const Size(2000, 1500)})
-    : _entities = List.generate(count, (i) => _generateMockEntity(i, canvasSize));
+    : _entities = [
+        ...List.generate(count, (i) => _generateMockEntity(i, canvasSize)),
+        _generateAmethystEntity(count, canvasSize),
+      ];
 
   static MockCardEntity _generateMockEntity(int index, Size canvasSize) {
     const margin = 20.0;
@@ -151,7 +196,37 @@ class MockSpatialDataSource extends SpatialDataSource {
     );
   }
 
-  final List<MockCardEntity> _entities;
+  /// Places the single amethyst chunk on an open patch of desk below the
+  /// mock card grid -- computed from the same grid math [_generateMockEntity]
+  /// uses (margin/cell size/column count), rather than a hand-picked
+  /// constant, so this keeps working if [kMockCardCount] or [canvasSize]
+  /// ever change. `usedRows` is how many grid rows the card count actually
+  /// fills; sitting a full cell below that (plus the standard margin) clears
+  /// the grid entirely -- verified against the current defaults (24 cards,
+  /// 2000x1500 canvas, 220x140 cards): 8 columns, 3 used rows, so the chunk
+  /// lands at roughly (20, 520), well clear of the cards' y-range of
+  /// 20..480.
+  static AmethystEntity _generateAmethystEntity(int cardCount, Size canvasSize) {
+    const margin = 20.0;
+    const chunkSize = Size(150, 120);
+    final cellWidth = kCardSize.width + margin;
+    final cellHeight = kCardSize.height + margin;
+    final columns = math.max(1, ((canvasSize.width - margin) / cellWidth).floor());
+    final usedRows = (cardCount / columns).ceil();
+    final top = margin + usedRows * cellHeight + margin;
+
+    return AmethystEntity(
+      id: 'amethyst-1',
+      position: Offset(margin, top),
+      // Reference prototype's initial pose (`state.rot = 0.15`); fixed
+      // forever per this entity's doc comment.
+      rotationY: 0.15,
+      size: chunkSize,
+      zIndex: cardCount,
+    );
+  }
+
+  final List<SpatialEntity> _entities;
 
   int _nextZIndex = kMockCardCount;
 
@@ -173,14 +248,30 @@ class MockSpatialDataSource extends SpatialDataSource {
 
   @override
   void onEntityMoved(String id, Offset position, double rotation) {
+    // _entities is now heterogeneous (MockCardEntity + the one
+    // AmethystEntity), and SpatialEntity itself only declares getters (no
+    // setters) for position/rotation/zIndex -- MockCardEntity/AmethystEntity
+    // each add their own mutable fields on top of that, so writing to them
+    // needs the concrete type back via an `is` check rather than an
+    // unconditional cast (the entity system has exactly two entity types in
+    // this example; a third would need its own branch here).
     final entity = _entities.firstWhere((e) => e.id == id);
-    entity.position = position;
-    entity.rotation = rotation;
-    // Tap-to-front-on-move is a small, harmless MVP nicety: keeps whatever
-    // you just dragged from being buried under other cards. Full "tap
-    // brings to front" (fable-review.md sec 1.6) is deferred; this just
-    // rides along with the move commit.
-    entity.zIndex = _nextZIndex++;
+    if (entity is MockCardEntity) {
+      entity.position = position;
+      entity.rotation = rotation;
+      // Tap-to-front-on-move is a small, harmless MVP nicety: keeps whatever
+      // you just dragged from being buried under other cards. Full "tap
+      // brings to front" (fable-review.md sec 1.6) is deferred; this just
+      // rides along with the move commit.
+      entity.zIndex = _nextZIndex++;
+    } else if (entity is AmethystEntity) {
+      entity.position = position;
+      // AmethystEntity.rotation is permanently 0 (see its doc comment) --
+      // the crystal's actual pose is [AmethystEntity.rotationY], which
+      // dragging never touches. `rotation` from the drag is accepted (same
+      // signature as the card branch) but has nothing to write back to.
+      entity.zIndex = _nextZIndex++;
+    }
     notifyListeners();
   }
 

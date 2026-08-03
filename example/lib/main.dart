@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 import 'package:pin_and_paper_card_renderer/card_renderer.dart';
 
+import 'crystal/amethyst_chunk.dart';
 import 'mock_spatial_data_source.dart';
 
 void main() {
@@ -126,7 +127,7 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
         color: const Color(0xFF0F0F17),
         child: SpatialCanvas(
           dataSource: _dataSource,
-          entityBuilder: _buildMockCard,
+          entityBuilder: _buildEntityWidget,
           canvasSize: kExampleCanvasSize,
           controller: _controller,
           // Delineates exactly where the usable desk ends: a dark surface
@@ -152,12 +153,28 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
     );
   }
 
-  // Milestone 2 preview: the real card renderer on the mock desk. Milestone 4
-  // repeats this wiring in the main app with real tasks. FlippableTaskCard
-  // (rather than TaskCard directly) is what makes double-tap-to-flip work --
-  // it reads flip state from the data source, same as isSelected reads
-  // selection state from the canvas.
-  Widget _buildMockCard(SpatialEntity entity, bool isSelected) {
+  // Milestone 2 preview: the real card renderer on the mock desk, plus the
+  // one amethyst desk object -- branches on entity type rather than an
+  // unconditional cast, since the canvas now hosts two different kinds of
+  // SpatialEntity (mock_spatial_data_source.dart's AmethystEntity being the
+  // second). Milestone 4 repeats the card half of this wiring in the main
+  // app with real tasks. FlippableTaskCard (rather than TaskCard directly)
+  // is what makes double-tap-to-flip work -- it reads flip state from the
+  // data source, same as isSelected reads selection state from the canvas.
+  Widget _buildEntityWidget(SpatialEntity entity, bool isSelected) {
+    if (entity is AmethystEntity) {
+      return AmethystChunk(
+        size: entity.size,
+        rotationY: entity.rotationY,
+        isSelected: isSelected,
+        // Explicit even though it's also AmethystChunk's own default: this
+        // is the one azimuth value the whole desk shares today (see
+        // kDeskLightAzimuth's doc comment) -- passing it explicitly here is
+        // what Phase 5 will change to instead read a real shared light
+        // state.
+        lightAzimuthDegrees: kDeskLightAzimuth,
+      );
+    }
     final mock = entity as MockCardEntity;
     return FlippableTaskCard(
       data: mock.cardData,
