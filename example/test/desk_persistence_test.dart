@@ -48,6 +48,19 @@ void main() {
     expect(restoredStone.size.width, closeTo(expectedStoneWidth, 0.001));
   });
 
+  test('flip state survives a fresh data source', () async {
+    final first = MockSpatialDataSource();
+    await first.initialized;
+    first.onEntityDoubleTapped('mock-3');
+    expect(first.isFlipped('mock-3'), isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final second = MockSpatialDataSource();
+    await second.initialized;
+    expect(second.isFlipped('mock-3'), isTrue);
+    expect(second.isFlipped('mock-4'), isFalse);
+  });
+
   test('with no saved layout, the default grid is used untouched', () async {
     final ds = MockSpatialDataSource();
     await ds.initialized;

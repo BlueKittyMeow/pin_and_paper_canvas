@@ -160,6 +160,7 @@ class MockSpatialDataSource extends SpatialDataSource {
   // does not -- it re-derives from interaction, same as a real desk.
   static const _kPositionsKey = 'example_entity_positions';
   static const _kAmethystWidthKey = 'example_amethyst_width';
+  static const _kFlippedKey = 'example_flipped_ids';
 
   /// Completes when any previously saved layout has been applied. Awaited
   /// by tests; the app just lets it land whenever it lands (a frame or two
@@ -180,6 +181,12 @@ class MockSpatialDataSource extends SpatialDataSource {
             if (entity is AmethystEntity) entity.position = position;
           }
         }
+      }
+      final flipped = prefs.getStringList(_kFlippedKey);
+      if (flipped != null) {
+        _flippedIds
+          ..clear()
+          ..addAll(flipped);
       }
       final savedWidth = prefs.getDouble(_kAmethystWidthKey);
       if (savedWidth != null) {
@@ -202,6 +209,7 @@ class MockSpatialDataSource extends SpatialDataSource {
       );
       final stone = _entities.whereType<AmethystEntity>().first;
       await prefs.setDouble(_kAmethystWidthKey, stone.size.width);
+      await prefs.setStringList(_kFlippedKey, _flippedIds.toList()..sort());
     } catch (_) {
       // Same: persistence is best-effort in the example.
     }
@@ -372,6 +380,7 @@ class MockSpatialDataSource extends SpatialDataSource {
       _flippedIds.add(id);
     }
     notifyListeners();
+    unawaited(_persist());
   }
 
   @override

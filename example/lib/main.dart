@@ -1,6 +1,10 @@
+import 'dart:async' show unawaited;
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 import 'package:pin_and_paper_card_renderer/card_renderer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'crystal/amethyst_chunk.dart';
 import 'mock_spatial_data_source.dart';
@@ -48,11 +52,54 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
   // per this task's brief -- no persistence.
   TaskCardBackFields _backFields = const TaskCardBackFields();
 
+  static const _kBackFieldsKey = 'example_card_back_fields';
+
   @override
   void initState() {
     super.initState();
     _dataSource = MockSpatialDataSource(canvasSize: kExampleCanvasSize);
     _controller = SpatialCanvasController();
+    unawaited(_restoreBackFields());
+  }
+
+  Future<void> _restoreBackFields() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kBackFieldsKey);
+      if (raw == null || !mounted) return;
+      final saved = jsonDecode(raw) as Map<String, dynamic>;
+      setState(() {
+        _backFields = TaskCardBackFields(
+          showStatus: saved['status'] as bool? ?? true,
+          showDueDate: saved['dueDate'] as bool? ?? true,
+          showTags: saved['tags'] as bool? ?? true,
+          showNotes: saved['notes'] as bool? ?? true,
+          showCreated: saved['created'] as bool? ?? false,
+          showId: saved['id'] as bool? ?? false,
+        );
+      });
+    } catch (_) {
+      // No prefs backend (plain widget tests): keep defaults, in-memory.
+    }
+  }
+
+  Future<void> _persistBackFields() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _kBackFieldsKey,
+        jsonEncode({
+          'status': _backFields.showStatus,
+          'dueDate': _backFields.showDueDate,
+          'tags': _backFields.showTags,
+          'notes': _backFields.showNotes,
+          'created': _backFields.showCreated,
+          'id': _backFields.showId,
+        }),
+      );
+    } catch (_) {
+      // Best-effort, same as the data source's layout persistence.
+    }
   }
 
   @override
@@ -91,6 +138,7 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
               setState(() {
                 _backFields = _toggleBackField(_backFields, field);
               });
+              unawaited(_persistBackFields());
             },
             itemBuilder: (context) => [
               for (final field in _BackField.values)
