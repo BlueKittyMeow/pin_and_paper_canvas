@@ -74,15 +74,28 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
         ],
       ),
       body: Container(
-        // Warm wood-ish desk background per CANVAS_SPEC.md's visual design
-        // notes, just so empty felt is visually distinct from the cards --
-        // purely cosmetic, not part of the module's API.
-        color: const Color(0xFF8B7355),
+        // Beyond the canvas edge is the "void" past the desk -- deliberately
+        // darker and flatter than the desk surface itself (SpatialCanvas's
+        // `background`, below) so panning/zooming past the boundary reads as
+        // leaving the usable canvas, not just more felt. Purely cosmetic,
+        // not part of the module's API.
+        color: const Color(0xFF0F0F17),
         child: SpatialCanvas(
           dataSource: _dataSource,
           entityBuilder: _buildMockCard,
           canvasSize: kExampleCanvasSize,
           controller: _controller,
+          // Delineates exactly where the usable desk ends: a dark surface
+          // filling the canvas bounds, framed by a thin amber edge (the
+          // owner's dark-theme-with-gold-accent palette, #C4941A, used
+          // sparingly here). Demonstrates SpatialCanvas.background for
+          // Milestone 2/3 implementers -- non-interactive, purely decorative.
+          background: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E2A),
+              border: Border.all(color: const Color(0xFFC4941A), width: 2),
+            ),
+          ),
         ),
       ),
     );

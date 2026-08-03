@@ -17,12 +17,13 @@ typedef SpatialEntityBuilder = Widget Function(SpatialEntity entity, bool isSele
 ///
 /// ## Rendering
 /// `ClipRect` -> `Transform(viewportMatrix)` (pan+zoom applied once) ->
-/// canvas-sized `Stack` -> per entity, sorted by visual layer tier (dragged
-/// > selected > plain), with `zIndex` (id tie-break) within a tier:
-/// `Positioned` -> `Transform.rotate` -> `RepaintBoundary` -> a per-card
-/// `GestureDetector` -> `entityBuilder`. Deliberately `Stack` + `Positioned`,
-/// not `CustomPaint`, and a hand-rolled viewport, not `InteractiveViewer` —
-/// see fable-review.md §1.1/§1.2 for why.
+/// canvas-sized `Stack` -> optionally [background] first (`Positioned.fill`
+/// + `IgnorePointer`, so it paints but never hit-tests), then per entity,
+/// sorted by visual layer tier (dragged > selected > plain), with `zIndex`
+/// (id tie-break) within a tier: `Positioned` -> `Transform.rotate` ->
+/// `RepaintBoundary` -> a per-card `GestureDetector` -> `entityBuilder`.
+/// Deliberately `Stack` + `Positioned`, not `CustomPaint`, and a hand-rolled
+/// viewport, not `InteractiveViewer` — see fable-review.md §1.1/§1.2 for why.
 ///
 /// ## Gesture arbitration (decided once, per fable-review.md §1.3)
 /// - The outer `GestureDetector` uses a single `onScale*` recognizer for the
@@ -97,6 +98,7 @@ class SpatialCanvas extends StatefulWidget {
     this.maxZoom = 2.0,
     this.rotationSnapDegrees,
     this.positionSnapSize,
+    this.background,
   }) : assert(minZoom > 0, 'minZoom must be positive'),
        assert(maxZoom >= minZoom, 'maxZoom must be >= minZoom');
 
@@ -129,6 +131,17 @@ class SpatialCanvas extends StatefulWidget {
   /// API-shape parity with CANVAS_SPEC.md; not yet applied to drags in this
   /// MVP milestone (snapping is deferred).
   final double? positionSnapSize;
+
+  /// Optional visual backdrop for the desk, painted at exactly [canvasSize]
+  /// -- i.e. it delineates where the usable canvas ends, which otherwise
+  /// isn't visible once zoomed/panned past the edge into the felt margin
+  /// (see `viewport_math.dart`'s `kDefaultFeltMargin`). Rendered as the
+  /// first `Stack` child, beneath every entity, and wrapped in
+  /// `IgnorePointer` so it never intercepts hit-testing -- taps still fall
+  /// through to the outer `GestureDetector`'s felt-tap handling exactly as
+  /// when [background] is null. Purely decorative; carries no state and
+  /// receives no callbacks.
+  final Widget? background;
 
   @override
   State<SpatialCanvas> createState() => _SpatialCanvasState();
@@ -281,7 +294,13 @@ class _SpatialCanvasState extends State<SpatialCanvas>
                     height: widget.canvasSize.height,
                     child: Stack(
                       clipBehavior: Clip.none,
-                      children: [for (final entity in entities) _buildEntity(entity)],
+                      children: [
+                        if (widget.background != null)
+                          Positioned.fill(
+                            child: IgnorePointer(child: widget.background),
+                          ),
+                        for (final entity in entities) _buildEntity(entity),
+                      ],
                     ),
                   ),
                 ),

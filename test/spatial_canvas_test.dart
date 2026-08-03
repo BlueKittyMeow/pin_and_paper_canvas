@@ -538,4 +538,41 @@ void main() {
 
     expect(dataSource.movedCalls, hasLength(1));
   });
+
+  testWidgets('background renders below entities and does not intercept taps', (tester) async {
+    const backgroundKey = Key('desk-background');
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(50, 50))]);
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SpatialCanvas(
+          dataSource: dataSource,
+          entityBuilder: _buildTestEntity,
+          canvasSize: const Size(800, 600),
+          background: Container(key: backgroundKey, color: Colors.brown),
+        ),
+      ),
+    );
+
+    // The background is the first Stack child (beneath every entity).
+    final stack = tester.widget<Stack>(
+      find.descendant(of: find.byType(SpatialCanvas), matching: find.byType(Stack)),
+    );
+    expect(stack.children.first, isA<Positioned>());
+    final firstChild = stack.children.first as Positioned;
+    expect(firstChild.child, isA<IgnorePointer>());
+    expect(find.byKey(backgroundKey), findsOneWidget);
+
+    // Tapping empty felt (away from the card, but still over the
+    // background) must still reach onCanvasTapped, not the background.
+    await tester.tapAt(const Offset(700, 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(dataSource.canvasTappedCalls, hasLength(1));
+    expect(dataSource.canvasTappedCalls.single, const Offset(700, 500));
+  });
 }
