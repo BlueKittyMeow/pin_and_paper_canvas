@@ -144,6 +144,24 @@ Future<void> _dragCardInSteps(
   await tester.pumpAndSettle();
 }
 
+/// Returns entity ids in the `SpatialCanvas`'s internal `Stack.children`
+/// order -- last is topmost (both painted last, on top, and hit-tested
+/// first). This is the ground truth for "which card is visually/hit-test
+/// on top" without needing to simulate an actual tap, which would be
+/// awkward to do safely mid-gesture (see the layering tests below).
+List<String> _stackChildOrder(WidgetTester tester) {
+  final stack = tester.widget<Stack>(
+    find.descendant(of: find.byType(SpatialCanvas), matching: find.byType(Stack)),
+  );
+  return stack.children
+      .map((child) {
+        final key = child.key;
+        return key is ValueKey<String> ? key.value : null;
+      })
+      .whereType<String>()
+      .toList();
+}
+
 void main() {
   testWidgets('renders entities at their canvas position when pan=0, zoom=1', (tester) async {
     final dataSource = _TestDataSource([
@@ -400,5 +418,71 @@ void main() {
         start: screenPoint, totalScreenDelta: const Offset(-60, -40));
     expect(dataSource.movedCalls, isNotEmpty,
         reason: 'drag must engage the card\'s pan recognizer');
+  });
+
+  testWidgets('the actively-dragged card renders on top even with a lower zIndex', (tester) async {
+    // 'lo' has the lower zIndex and starts well clear of 'hi' so the drag can
+    // originate on it unambiguously; the drag then carries it over 'hi'.
+    final dataSource = _TestDataSource([
+      _TestEntity(id: 'lo', position: const Offset(50, 50), zIndex: 0),
+      _TestEntity(id: 'hi', position: const Offset(300, 50), zIndex: 5),
+    ]);
+    await _pumpCanvas(tester, dataSource: dataSource);
+
+    // Before any interaction: plain (zIndex, id) order -- 'hi' (zIndex 5) on
+    // top of 'lo' (zIndex 0).
+    expect(_stackChildOrder(tester), ['lo', 'hi']);
+
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(const Key('card-lo'))));
+    // Drag 'lo' most of the way toward 'hi' -- enough steps that the card
+    // drag has definitely won its gesture arena and is in flight.
+    for (var i = 0; i < 20; i++) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump(const Duration(milliseconds: 8));
+    }
+
+    // Mid-drag (gesture still down): 'lo' must be topmost despite its lower
+    // zIndex, because it's the actively-dragged card.
+    expect(_stackChildOrder(tester).last, 'lo',
+        reason: 'the actively-dragged card must render on top of everything else');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // After release: no longer dragging, back to plain (zIndex, id) order.
+    expect(_stackChildOrder(tester), ['lo', 'hi']);
+  });
+
+  testWidgets('tap-selecting a card raises it above an overlapping unselected card', (tester) async {
+    // 'a' has the higher zIndex (renders on top by default) and fully
+    // contains 'b's top-left corner, but 'b' extends further right/down so
+    // there's an exposed sliver of 'b' to tap without hitting 'a'.
+    final dataSource = _TestDataSource([
+      _TestEntity(id: 'a', position: const Offset(100, 100), size: const Size(100, 60), zIndex: 5),
+      _TestEntity(id: 'b', position: const Offset(150, 110), size: const Size(200, 150), zIndex: 0),
+    ]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    // Before selection: plain (zIndex, id) order -- 'a' (zIndex 5) on top.
+    expect(_stackChildOrder(tester), ['b', 'a']);
+
+    // A point inside 'b' (spans x:150-350, y:110-260) but outside 'a' (spans
+    // x:100-200, y:100-160).
+    const tapPoint = Offset(300, 200);
+    await tester.tapAt(tapPoint);
+    // Wait out the double-tap timeout (real Timer, not a frame) -- see the
+    // 'tapping a card selects it' test above for why pumpAndSettle alone
+    // returns too early.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(dataSource.tappedCalls, ['b'], reason: 'tap must land on b, not a');
+    expect(controller.selectedIds, {'b'});
+
+    // After selection: 'b' must render on top despite its lower zIndex,
+    // because it's now the selected card.
+    expect(_stackChildOrder(tester), ['a', 'b'],
+        reason: 'the selected card must render above an overlapping unselected one');
   });
 }

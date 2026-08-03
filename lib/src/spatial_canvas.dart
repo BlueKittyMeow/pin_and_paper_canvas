@@ -16,7 +16,8 @@ typedef SpatialEntityBuilder = Widget Function(SpatialEntity entity, bool isSele
 ///
 /// ## Rendering
 /// `ClipRect` -> `Transform(viewportMatrix)` (pan+zoom applied once) ->
-/// canvas-sized `Stack` -> per entity, sorted by `zIndex` (id tie-break):
+/// canvas-sized `Stack` -> per entity, sorted by visual layer tier (dragged
+/// > selected > plain), with `zIndex` (id tie-break) within a tier:
 /// `Positioned` -> `Transform.rotate` -> `RepaintBoundary` -> a per-card
 /// `GestureDetector` -> `entityBuilder`. Deliberately `Stack` + `Positioned`,
 /// not `CustomPaint`, and a hand-rolled viewport, not `InteractiveViewer` —
@@ -188,6 +189,10 @@ class _SpatialCanvasState extends State<SpatialCanvas>
     if (mounted) setState(() {});
   }
 
+  /// Entities in data-order: `(zIndex, id)` ascending, ties broken by [id].
+  /// This is the order [SpatialEntity.zIndex] alone describes, and is what
+  /// [focusOnEntity] uses to look a card up -- lookup order doesn't matter
+  /// for that, so it doesn't need the visual-layering tiers below.
   List<SpatialEntity> _sortedEntities() {
     final rect = Rect.fromLTWH(0, 0, widget.canvasSize.width, widget.canvasSize.height);
     final entities = widget.dataSource.getVisibleEntities(rect).toList();
@@ -198,9 +203,38 @@ class _SpatialCanvasState extends State<SpatialCanvas>
     return entities;
   }
 
+  /// Visual layer tier for [entity], highest paints last (on top). Widget
+  /// state (drag-in-progress, selection) always wins over data-side
+  /// [SpatialEntity.zIndex] here so the card you're touching is never buried
+  /// mid-gesture -- persisting a z-order bump from that is the data source's
+  /// business (see `MockSpatialDataSource.onEntityMoved`'s "tap-to-front-on-
+  /// move" comment), not this widget's.
+  int _layerTier(SpatialEntity entity) {
+    if (entity.id == _draggingEntityId) return 2;
+    if (_selectedIds.contains(entity.id)) return 1;
+    return 0;
+  }
+
+  /// Entities in render/hit-test order for the `Stack`: tiered by
+  /// [_layerTier] (dragged > selected > plain) so the actively-dragged card
+  /// is always topmost and selected cards sit above unselected ones, then
+  /// within a tier by [_sortedEntities]'s `(zIndex, id)` order. Only [build]
+  /// should use this -- it's about *how* things paint/hit-test this frame,
+  /// not the entities' own data order.
+  List<SpatialEntity> _visuallySortedEntities() {
+    final entities = _sortedEntities();
+    entities.sort((a, b) {
+      final byTier = _layerTier(a).compareTo(_layerTier(b));
+      if (byTier != 0) return byTier;
+      final byZ = a.zIndex.compareTo(b.zIndex);
+      return byZ != 0 ? byZ : a.id.compareTo(b.id);
+    });
+    return entities;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final entities = _sortedEntities();
+    final entities = _visuallySortedEntities();
     return LayoutBuilder(
       builder: (context, constraints) {
         _viewportSize = constraints.biggest;
