@@ -93,7 +93,14 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
           // Milestone 2/3 implementers -- non-interactive, purely decorative.
           background: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E2A),
+              // Lara's seamless kraft-paper texture (from the sketchpad
+              // asset library, downscaled): the desk reads as warm craft
+              // paper, cream cards sit on it like real index cards. The
+              // amber edge still marks where the usable desk ends.
+              image: const DecorationImage(
+                image: AssetImage('assets/SeamlessKraft1.jpg'),
+                repeat: ImageRepeat.repeat,
+              ),
               border: Border.all(color: const Color(0xFFC4941A), width: 2),
             ),
           ),
