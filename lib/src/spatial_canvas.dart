@@ -352,7 +352,7 @@ class _SpatialCanvasState extends State<SpatialCanvas>
                 ? (widget.liftDecorationBuilder?.call(entity) ??
                     const BoxDecoration(
                       borderRadius: BorderRadius.all(Radius.circular(4)),
-                      boxShadow: [BoxShadow(color: Color(0x40000000), blurRadius: 10, offset: Offset(2, 6))],
+                      boxShadow: [BoxShadow(color: Color(0x40000000), blurRadius: 10, offset: Offset(-2, 6))],
                     ))
                 : const BoxDecoration(),
             child: _buildEntityCore(entity, isSelected),

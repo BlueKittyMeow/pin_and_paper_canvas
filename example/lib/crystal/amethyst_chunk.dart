@@ -23,7 +23,7 @@ import 'package:flutter/material.dart';
 /// example wires into every light-aware desk object by hand, so the desk
 /// reads as lit from a single consistent direction. Owner-approved value:
 /// 9.0 degrees (see [AmethystChunk.lightAzimuthDegrees]'s doc comment).
-const double kDeskLightAzimuth = 9.0;
+const double kDeskLightAzimuth = 30.0;
 
 // ---------------------------------------------------------------------------
 // Mesh generation: seeded point cloud -> convex hull. Pure math, no Flutter
@@ -462,9 +462,13 @@ class AmethystChunkPainter extends CustomPainter {
     final contactCx = (baseMinX + baseMaxX) / 2;
     final contactCy = lowestY - scale * 0.02;
 
-    // --- cast shadow + transmitted pool (painted first, beneath everything),
-    // all anchored to the contact point rather than a nominal baseline ---
-    final poolOffset = -light.x * scale * 0.45;
+    // --- directional cast shadow + transmitted pool (painted first,
+    // beneath everything). The desk story: a window at the top-right
+    // (kDeskLightAzimuth), so shadows throw down-left, shaped like the
+    // stone itself -- the silhouette projected along the light, each point
+    // displaced proportionally to its height above the contact line. Base
+    // points stay pinned; the top gets thrown furthest. ---
+    final shadowDir = Offset(-light.x, 0.85);
 
     if (isSelected) {
       // Soft amber underglow, beneath even the shadow/pool -- the whole
@@ -482,24 +486,44 @@ class AmethystChunkPainter extends CustomPainter {
       );
     }
 
-    _paintPool(
-      canvas,
-      centerX: contactCx + poolOffset * 0.4,
-      centerY: contactCy,
-      radius: scale * 0.85,
-      innerColor: const Color.fromRGBO(30, 18, 10, 0.40),
-      outerColor: const Color.fromRGBO(30, 18, 10, 0),
-      verticalSquish: 0.30,
-    );
-    _paintPool(
-      canvas,
-      centerX: contactCx + poolOffset * 0.95,
-      centerY: contactCy,
-      radius: scale * 0.66,
-      innerColor: Color.fromRGBO(139, 92, 201, (0.30 + 0.14 * inclusions).clamp(0.0, 1.0)),
-      outerColor: const Color.fromRGBO(139, 92, 201, 0),
-      verticalSquish: 0.26,
-    );
+    // Cast shadow: the hull silhouette skewed onto the desk. Height above
+    // the contact line becomes displacement along [shadowDir], foreshortened
+    // (0.5) so it reads as paper-flat, not a standing mirror image.
+    Offset castPoint(Offset p) {
+      final heightAboveBase = (contactCy - p.dy).clamp(0.0, double.infinity);
+      return Offset(
+        p.dx + shadowDir.dx * heightAboveBase * 0.5,
+        contactCy + shadowDir.dy * heightAboveBase * 0.5,
+      );
+    }
+
+    if (hull.length > 2) {
+      final castHull = hull.map(castPoint).toList(growable: false);
+      final tail = Offset(
+        contactCx + shadowDir.dx * scale * 0.9,
+        contactCy + shadowDir.dy * scale * 0.9,
+      );
+      final castPaint = Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(contactCx, contactCy),
+          tail,
+          [const Color.fromRGBO(24, 14, 8, 0.38), const Color.fromRGBO(24, 14, 8, 0.04)],
+        )
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.035);
+      canvas.drawPath(_polygonPath(castHull), castPaint);
+
+      // Transmitted purple: light that came *through* the stone lands inside
+      // the very shadow the stone casts.
+      _paintPool(
+        canvas,
+        centerX: contactCx + shadowDir.dx * scale * 0.42,
+        centerY: contactCy + shadowDir.dy * scale * 0.42,
+        radius: scale * 0.48,
+        innerColor: Color.fromRGBO(139, 92, 201, (0.34 + 0.14 * inclusions).clamp(0.0, 1.0)),
+        outerColor: const Color.fromRGBO(139, 92, 201, 0),
+        verticalSquish: 0.5,
+      );
+    }
     // Contact shadow: the tight, dark occlusion right where stone meets
     // paper -- the "it is actually resting on something" cue. NOT a
     // bounding-box ellipse (owner report: that pokes out below the base's
