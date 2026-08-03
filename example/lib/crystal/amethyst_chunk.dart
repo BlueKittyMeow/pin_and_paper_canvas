@@ -357,7 +357,14 @@ class _ProjectedFace {
 
 Vec3 _lightVector(double azimuthDegrees) {
   final az = azimuthDegrees * math.pi / 180;
-  return Vec3(math.sin(az), -0.62, 0.55).normalized;
+  // +0.62, DELIBERATE DEVIATION from the reference's -0.62: in this
+  // projection +y is screen-up, so the reference's negative component lit
+  // the stone from *below* -- unnoticeable for a floating gem in the
+  // fitting room, but on the desk the brightest facets sat on the bottom
+  // rim while the cast shadow claimed a top-right sun (owner report
+  // 2026-08-03: "maybe it's how the rendered light is hitting the
+  // facets"). Top facets now catch the window light the shadow implies.
+  return Vec3(math.sin(az), 0.62, 0.55).normalized;
 }
 
 Path _polygonPath(List<Offset> points) {
@@ -575,7 +582,9 @@ class AmethystChunkPainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           Offset(contactCx, contactCy),
           tail,
-          [const Color.fromRGBO(24, 14, 8, 0.38), const Color.fromRGBO(24, 14, 8, 0.04)],
+          // Dark enough to register on the dark kraft, not just on cream
+          // cards (owner report: grounding read worse on the corkboard).
+          [const Color.fromRGBO(24, 14, 8, 0.52), const Color.fromRGBO(24, 14, 8, 0.06)],
         )
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.035);
       canvas.drawPath(_polygonPath(castHull), castPaint);
@@ -587,7 +596,7 @@ class AmethystChunkPainter extends CustomPainter {
         centerX: contactCx + shadowDir.dx * scale * 0.42,
         centerY: contactCy + shadowDir.dy * scale * 0.42,
         radius: scale * 0.48,
-        innerColor: Color.fromRGBO(139, 92, 201, (0.34 + 0.14 * inclusions).clamp(0.0, 1.0)),
+        innerColor: Color.fromRGBO(149, 90, 219, (0.42 + 0.14 * inclusions).clamp(0.0, 1.0)),
         outerColor: const Color.fromRGBO(139, 92, 201, 0),
         verticalSquish: 0.5,
       );
@@ -614,7 +623,7 @@ class AmethystChunkPainter extends CustomPainter {
       canvas.drawPath(
         contour,
         Paint()
-          ..color = const Color.fromRGBO(18, 10, 6, 0.42)
+          ..color = const Color.fromRGBO(18, 10, 6, 0.52)
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.045),
       );
     }
