@@ -34,17 +34,19 @@ void main() {
     final w = image.width, h = image.height;
 
     int alphaAt(int x, int y) => bytes.getUint8((y * w + x) * 4 + 3);
-    bool isStone(int x, int y) {
-      final i = (y * w + x) * 4;
-      final r = bytes.getUint8(i), g = bytes.getUint8(i + 1), b = bytes.getUint8(i + 2), a = bytes.getUint8(i + 3);
-      // Saturated purple body: strong alpha, blue-dominant over green.
-      return a > 160 && b > 90 && b > g + 25 && r > 60;
-    }
+    // Stone body pixels composite near-opaque over the transparent test
+    // background (>= 235 even for glassy facets over interior passes);
+    // ground shadow washes stay well below that. This is only valid because
+    // the background here is transparent — do not reuse over a real desk.
+    bool isStone(int x, int y) => alphaAt(x, y) >= 235;
 
-    // Sample columns across the stone's central width.
+    // Sweep columns across the WHOLE silhouette width — the light-band bug
+    // lived under the flanks, which center-only probing missed (owner
+    // demonstrated it with a selected/unselected screenshot pair after the
+    // first version of this test called it fixed).
     final results = <String>[];
     var worstGap = 0;
-    for (final fx in [0.38, 0.46, 0.54, 0.62]) {
+    for (var fx = 0.20; fx <= 0.80; fx += 0.04) {
       final x = (w * fx).round();
       var stoneBottom = -1;
       for (var y = h - 1; y >= 0; y--) {
@@ -53,38 +55,22 @@ void main() {
           break;
         }
       }
-      if (stoneBottom < 0) {
-        results.add('col $fx: no stone pixels');
-        continue;
-      }
-      // Shadow DENSITY profile below the base: the failure mode isn't a
-      // transparent gap but weak shadow at contact with the dark peak
-      // offset lower ("lighter area" under the stone, owner screenshot).
-      final profile = [
-        for (final d in [2, 6, 12, 20, 30, 42])
-          stoneBottom + d < h ? alphaAt(x, stoneBottom + d) : 0,
-      ];
-      // Where does the max density sit?
-      var peakOffset = 0, peakAlpha = -1;
-      for (var d = 1; d < 60 && stoneBottom + d < h; d++) {
-        final a = alphaAt(x, stoneBottom + d);
-        if (a > peakAlpha) {
-          peakAlpha = a;
-          peakOffset = d;
-        }
-      }
-      results.add('col $fx: bottom=$stoneBottom profile(2,6,12,20,30,42)=$profile peak=$peakAlpha@+$peakOffset');
-      // "Gap" now means: contact-adjacent shadow (within 6px) must be at
-      // least 60% as dense as the peak — otherwise there's a light band.
-      final contactAlpha = profile[0] > profile[1] ? profile[0] : profile[1];
-      if (peakAlpha > 0 && contactAlpha < peakAlpha * 0.6) {
-        worstGap = worstGap < peakOffset ? peakOffset : worstGap;
+      if (stoneBottom < 0) continue; // column outside the silhouette
+      // Not just presence — DENSITY. A faint wash at the seam still reads
+      // as a light band against the darker blob (the failure mode the
+      // owner kept catching); the skirt must be genuinely dark right at
+      // the silhouette.
+      final seamY = stoneBottom + 3;
+      final seamAlpha = seamY < h ? alphaAt(x, seamY) : 0;
+      if (seamAlpha < 60) {
+        results.add('col ${fx.toStringAsFixed(2)}: bottom=$stoneBottom seamAlpha=$seamAlpha');
+        worstGap = worstGap < 99 ? 99 : worstGap;
       }
     }
-    debugPrint('GROUNDING: ${results.join(' | ')} worstGap=$worstGap');
+    debugPrint('GROUNDING worstGap=$worstGap ${results.isEmpty ? "(all snug)" : results.join(" | ")}');
 
     expect(worstGap, lessThanOrEqualTo(3),
-        reason: 'shadow must start within 3px of the stone base; got $worstGap. ${results.join(' | ')}');
+        reason: 'shadow must hug the full lower silhouette; light band at: ${results.join(' | ')}');
   });
 
   test('selection paints nothing on the ground (no underglow wash)', () async {

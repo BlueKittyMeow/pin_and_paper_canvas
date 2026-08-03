@@ -367,6 +367,31 @@ Vec3 _lightVector(double azimuthDegrees) {
   return Vec3(math.sin(az), 0.62, 0.55).normalized;
 }
 
+/// The hull ring's lower arc — the stone's underside contour, ordered
+/// left-to-right. Splits the ring at its leftmost/rightmost vertices and
+/// keeps the arc with the larger mean screen-y (screen +y is down).
+List<Offset> _lowerSilhouetteChain(List<Offset> hull) {
+  if (hull.length < 3) return List.of(hull);
+  var minI = 0, maxI = 0;
+  for (var i = 1; i < hull.length; i++) {
+    if (hull[i].dx < hull[minI].dx) minI = i;
+    if (hull[i].dx > hull[maxI].dx) maxI = i;
+  }
+  List<Offset> arc(int from, int to) {
+    final out = <Offset>[];
+    for (var i = from; ; i = (i + 1) % hull.length) {
+      out.add(hull[i]);
+      if (i == to) break;
+    }
+    return out;
+  }
+
+  final a = arc(minI, maxI);
+  final b = arc(maxI, minI).reversed.toList(); // also left-to-right
+  double meanY(List<Offset> c) => c.fold(0.0, (s, p) => s + p.dy) / c.length;
+  return meanY(a) >= meanY(b) ? a : b;
+}
+
 Path _polygonPath(List<Offset> points) {
   final path = Path()..moveTo(points[0].dx, points[0].dy);
   for (var i = 1; i < points.length; i++) {
@@ -597,24 +622,30 @@ class AmethystChunkPainter extends CustomPainter {
     // higher side like an invisible shim). Instead a band that follows the
     // hull's bottom contour: its top edge rides the silhouette and its
     // drop tapers to nothing where the body lifts away from the paper.
-    final bandDepth = scale * 0.30;
-    final bottomChain = hull.where((p) => p.dy > lowestY - bandDepth).toList()
-      ..sort((a, b) => a.dx.compareTo(b.dx));
-    if (bottomChain.length >= 2) {
-      final contour = Path()..moveTo(bottomChain.first.dx, bottomChain.first.dy + 1);
-      for (final p in bottomChain.skip(1)) {
-        contour.lineTo(p.dx, p.dy + 1);
+    // The cast blob's top edge is a flat line at the contact level, but the
+    // stone's underside is a CURVE — under the flanks a wedge of bare desk
+    // showed between silhouette and shadow (owner falsified the previous
+    // "selection glow" diagnosis with a controlled screenshot pair; the
+    // wedge was the real light band all along). The SKIRT fills that wedge:
+    // the region bounded above by the full lower-silhouette contour and
+    // below by the contact line, so darkness climbs to meet the stone's
+    // actual underside at every column.
+    final lowerSilhouette = _lowerSilhouetteChain(hull);
+    if (lowerSilhouette.length >= 2) {
+      final skirtBottom = lowestY + scale * 0.05;
+      final skirt = Path()
+        ..moveTo(lowerSilhouette.first.dx, lowerSilhouette.first.dy + 1);
+      for (final p in lowerSilhouette.skip(1)) {
+        skirt.lineTo(p.dx, p.dy + 1);
       }
-      for (final p in bottomChain.reversed) {
-        final closeness = (1 - (lowestY - p.dy) / bandDepth).clamp(0.0, 1.0);
-        contour.lineTo(p.dx, p.dy + 1 + scale * 0.12 * closeness);
-      }
-      contour.close();
+      skirt.lineTo(lowerSilhouette.last.dx, skirtBottom);
+      skirt.lineTo(lowerSilhouette.first.dx, skirtBottom);
+      skirt.close();
       canvas.drawPath(
-        contour,
+        skirt,
         Paint()
-          ..color = const Color.fromRGBO(18, 10, 6, 0.52)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.045),
+          ..color = const Color.fromRGBO(18, 10, 6, 0.48)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.03),
       );
     }
 
@@ -727,14 +758,14 @@ class AmethystChunkPainter extends CustomPainter {
     // 2026-08-03). Shade the stone's own base from inside: a dark violet
     // band rising from the bottom contour, clipped to the silhouette so it
     // only ever darkens the stone, never the paper.
-    if (bottomChain.length >= 2 && hull.length > 2) {
+    if (lowerSilhouette.length >= 2 && hull.length > 2) {
       canvas.save();
       canvas.clipPath(_polygonPath(hull));
-      final occlusion = Path()..moveTo(bottomChain.first.dx, bottomChain.first.dy + 2);
-      for (final p in bottomChain.skip(1)) {
+      final occlusion = Path()..moveTo(lowerSilhouette.first.dx, lowerSilhouette.first.dy + 2);
+      for (final p in lowerSilhouette.skip(1)) {
         occlusion.lineTo(p.dx, p.dy + 2);
       }
-      for (final p in bottomChain.reversed) {
+      for (final p in lowerSilhouette.reversed) {
         occlusion.lineTo(p.dx, p.dy - scale * 0.09);
       }
       occlusion.close();
