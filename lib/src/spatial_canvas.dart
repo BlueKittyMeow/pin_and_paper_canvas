@@ -41,8 +41,18 @@ typedef SpatialEntityBuilder = Widget Function(SpatialEntity entity, bool isSele
 ///   (b) a card drag refuses to start at all (`onPanStart` no-ops) if a
 ///   second pointer is already down. Either way, the viewport ends up
 ///   owning any 2+-finger gesture.
-/// - Drag delta is divided by the current zoom (screen px -> canvas units)
-///   before being applied, per fable-review.md §1.3/§1.4.
+/// - Card drag delta ends up in canvas units without any explicit division
+///   by zoom in the handler. fable-review.md §1.3/§1.4 says the drag delta
+///   "must be divided by zoom (screen px -> canvas units)", which is the
+///   right *intent*, but not literally the right code here: the per-card
+///   `GestureDetector` lives inside `Transform(viewportMatrix)`, and Flutter
+///   documents `DragUpdateDetails.delta` as being in "the coordinate space of
+///   the event receiver" -- i.e. it already comes back pre-divided by the
+///   ancestor transform's scale. Explicitly dividing by zoom again would
+///   double-divide (invisible at zoom 1.0, silently halves every drag at
+///   zoom 2.0 -- see `_handlePanUpdate`'s doc comment and
+///   test/spatial_canvas_test.dart's zoom-2.0 drag test, which is what
+///   caught this).
 /// - Rotation gestures, z-order-on-tap, selection glow, snapping
 ///   (`rotationSnapDegrees`/`positionSnapSize` are accepted in the
 ///   constructor for API-shape compatibility with later milestones but are
@@ -375,8 +385,29 @@ class _SpatialCanvasState extends State<SpatialCanvas>
       return;
     }
     final current = _dragPreviewPosition ?? entity.position;
-    final canvasDelta = Offset(details.delta.dx / _zoom, details.delta.dy / _zoom);
-    final proposed = current + canvasDelta;
+    // NOTE ON A DEVIATION FROM fable-review.md sec 1.3's literal text
+    // ("drag delta must be divided by zoom"): that's the right *intent*
+    // (screen px -> canvas units) but not the right implementation for this
+    // widget's structure. This card's GestureDetector lives *inside*
+    // Transform(viewportMatrix), and Flutter's DragUpdateDetails.delta is
+    // documented as "the amount the pointer has moved in the coordinate
+    // space of the event receiver" -- i.e. it is already expressed in this
+    // widget's *local* (post-scale) coordinate space, not raw global screen
+    // pixels. Dividing it by _zoom again double-divides, which is invisible
+    // at zoom 1.0 (dividing by 1 is a no-op) but silently halves every drag
+    // at zoom 2.0 -- caught by test/spatial_canvas_test.dart's zoom-2.0 drag
+    // test. So: use the delta as-is here.
+    //
+    // Caveat for whoever adds rotation gestures (deferred past this
+    // milestone): this GestureDetector also sits inside Transform.rotate
+    // (currently a no-op since rotation is always 0 in the MVP). Once
+    // entities can have nonzero rotation, this same "delta is already
+    // locally transformed" fact means `details.delta` would also come back
+    // rotated, which is *not* what you want for a canvas-space drag delta --
+    // you'd need to either hoist this GestureDetector outside the per-entity
+    // Transform.rotate, or counter-rotate the delta by `-entity.rotation`
+    // before using it.
+    final proposed = current + details.delta;
     final maxX = math.max(0.0, widget.canvasSize.width - entity.size.width);
     final maxY = math.max(0.0, widget.canvasSize.height - entity.size.height);
     final clamped = Offset(
