@@ -20,6 +20,9 @@ class CanvasExampleApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'pin_and_paper_canvas example',
+      // The DEBUG ribbon drapes over the appbar's right corner on desktop
+      // and hides/crowds the action icons (owner report 2026-08-03).
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFC4941A))),
       home: const CanvasDemoScreen(),
     );
@@ -70,7 +73,19 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
           // robust beats a fancier menu for this preview.
           PopupMenuButton<_BackField>(
             tooltip: 'Card back fields',
-            icon: const Icon(Icons.tune),
+            // A labeled button, not a bare glyph: the lone Icons.tune was
+            // invisible next to three zoom icons (owner couldn't find it).
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.flip_to_back, size: 18),
+                  SizedBox(width: 6),
+                  Text('Card backs'),
+                ],
+              ),
+            ),
             onSelected: (field) {
               setState(() {
                 _backFields = _toggleBackField(_backFields, field);
