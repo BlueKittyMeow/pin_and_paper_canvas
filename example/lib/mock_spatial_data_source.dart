@@ -45,6 +45,21 @@ const List<TagChip> _mockTags = [
   TagChip(id: 't6', name: 'someday', color: Color(0xFF607D8B), textColor: Colors.white),
 ];
 
+/// Believable notes, loosely paired with [_mockTitles] by index, for the
+/// card-flip back face preview. Only a fraction of cards get one (see
+/// `_generateMockEntity`) -- most index cards are bare, some have a line or
+/// two jotted on the back, same as real ones.
+const List<String> _mockNotes = [
+  'Check the soil moisture before watering -- the ferns are still recovering from the heat wave.',
+  'Need the season 22 discs from archive.org; check file sizes before starting the rip.',
+  'The chips.py patch keeps getting wiped on pip upgrades -- write it down somewhere permanent this time.',
+  'Ask Kyla if the drive still has room before starting; last sync filled it to 90%.',
+  "Chapter three needs the pacing fix from Lara's margin notes, not a full rewrite.",
+  'Ply is thinner than planned -- might need a third bobbin to hit worsted weight.',
+  'Current box is down to three sleeves; order from the usual supplier before the next batch.',
+  "Router UI shows conditional forwarding as enabled but it's still not resolving local hostnames reliably.",
+];
+
 /// A mutable mock entity. Not exported -- this is example-app-only scaffolding
 /// standing in for a real `TaskSpatialEntity` (Milestone 4's job).
 class MockCardEntity implements SpatialEntity {
@@ -124,6 +139,12 @@ class MockSpatialDataSource extends SpatialDataSource {
         dueDate: dueDate,
         isCompleted: completed,
         isOverdue: !completed && dueBucket == 0,
+        // Spread over the last ~6 weeks so the back face's "Created" row
+        // shows varied, plausible dates rather than everything reading "now".
+        createdAt: now.subtract(Duration(days: 3 + (index * 5) % 40)),
+        // 1 in 4 cards has a note -- believable back-of-card detail, not
+        // every card (per this task's "believable" brief).
+        notes: index % 4 == 0 ? _mockNotes[(index ~/ 4) % _mockNotes.length] : null,
       ),
       position: Offset(margin + col * cellWidth, margin + row * cellHeight) + layerOffset,
       zIndex: index,
@@ -133,6 +154,19 @@ class MockSpatialDataSource extends SpatialDataSource {
   final List<MockCardEntity> _entities;
 
   int _nextZIndex = kMockCardCount;
+
+  /// Ids currently showing their back face. Lives here (next to the other
+  /// per-entity state this data source already owns) rather than in the
+  /// screen's `State`, because it's toggled by a `SpatialDataSource`
+  /// callback ([onEntityDoubleTapped]) the same way selection/position are
+  /// -- and this class is already a `ChangeNotifier` the canvas listens to,
+  /// so `notifyListeners()` here rebuilds the canvas for free, same as
+  /// [onEntityMoved] does.
+  final Set<String> _flippedIds = {};
+
+  /// Whether [id]'s card is currently showing `TaskCardBack`. Read by the
+  /// example's `entityBuilder` when building each `FlippableTaskCard`.
+  bool isFlipped(String id) => _flippedIds.contains(id);
 
   @override
   List<SpatialEntity> getVisibleEntities(Rect viewport) => _entities;
@@ -157,7 +191,12 @@ class MockSpatialDataSource extends SpatialDataSource {
 
   @override
   void onEntityDoubleTapped(String id) {
-    debugPrint('MockSpatialDataSource: double-tapped $id');
+    // Double-tap flips the card -- the Milestone 2 preview's stand-in for
+    // whatever gesture/affordance Milestone 4 settles on in the real app.
+    if (!_flippedIds.remove(id)) {
+      _flippedIds.add(id);
+    }
+    notifyListeners();
   }
 
   @override
