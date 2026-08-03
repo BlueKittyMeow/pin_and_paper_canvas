@@ -130,6 +130,12 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
           entityBuilder: _buildEntityWidget,
           canvasSize: kExampleCanvasSize,
           controller: _controller,
+          // The default drag-lift shadow is a rounded rect -- right for
+          // cards, a "weird square shadow" under the amethyst, which paints
+          // its own grounding pool (owner report 2026-08-03). Suppress it
+          // for the stone; lift scale still applies.
+          liftDecorationBuilder: (entity) =>
+              entity is AmethystEntity ? const BoxDecoration() : null,
           // Delineates exactly where the usable desk ends: a dark surface
           // filling the canvas bounds, framed by a thin amber edge (the
           // owner's dark-theme-with-gold-accent palette, #C4941A, used
@@ -163,7 +169,7 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
   // data source, same as isSelected reads selection state from the canvas.
   Widget _buildEntityWidget(SpatialEntity entity, bool isSelected) {
     if (entity is AmethystEntity) {
-      return AmethystChunk(
+      final chunk = AmethystChunk(
         size: entity.size,
         rotationY: entity.rotationY,
         isSelected: isSelected,
@@ -174,6 +180,31 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
         // state.
         lightAzimuthDegrees: kDeskLightAzimuth,
       );
+      if (!isSelected) return chunk;
+      // Selected: resize chips, INSIDE the entity's bounds (anything outside
+      // a Positioned entity's box is unhittable -- the 843e79a lesson).
+      // Their inner tap recognizers win the arena over the canvas's per-card
+      // detector, so tapping a chip resizes without moving/deselecting.
+      return Stack(children: [
+        Positioned.fill(child: chunk),
+        Positioned(
+          top: 2,
+          right: 2,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _ResizeChip(
+              icon: Icons.add,
+              tooltip: 'Bigger',
+              onTap: () => _dataSource.resizeAmethyst(entity.id, 1.15),
+            ),
+            const SizedBox(height: 4),
+            _ResizeChip(
+              icon: Icons.remove,
+              tooltip: 'Smaller',
+              onTap: () => _dataSource.resizeAmethyst(entity.id, 1 / 1.15),
+            ),
+          ]),
+        ),
+      ]);
     }
     final mock = entity as MockCardEntity;
     return FlippableTaskCard(
@@ -181,6 +212,37 @@ class _CanvasDemoScreenState extends State<CanvasDemoScreen> {
       showBack: _dataSource.isFlipped(mock.id),
       isSelected: isSelected,
       backFields: _backFields,
+    );
+  }
+}
+
+/// Small circular resize control shown on the selected amethyst. Amber on
+/// dark, matching the desk's accent language; deliberately tiny so it reads
+/// as a handle, not a toolbar.
+class _ResizeChip extends StatelessWidget {
+  const _ResizeChip({required this.icon, required this.tooltip, required this.onTap});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: const Color(0xCC16161F),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFC4941A), width: 1),
+          ),
+          child: Icon(icon, size: 14, color: const Color(0xFFC4941A)),
+        ),
+      ),
     );
   }
 }

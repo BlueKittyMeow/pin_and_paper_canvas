@@ -95,8 +95,11 @@ class AmethystEntity implements SpatialEntity {
   @override
   double get rotation => 0;
 
+  /// Mutable: the owner can resize the stone via the selection chips (see
+  /// MockSpatialDataSource.resizeAmethyst). Cards stay fixed-size; a desk
+  /// object is decor, and decor gets to be whatever size sparks joy.
   @override
-  final Size size;
+  Size size;
 
   @override
   int zIndex;
@@ -243,6 +246,20 @@ class MockSpatialDataSource extends SpatialDataSource {
   /// example's `entityBuilder` when building each `FlippableTaskCard`.
   bool isFlipped(String id) => _flippedIds.contains(id);
 
+  /// Uniformly scales the amethyst by [factor], growing/shrinking from its
+  /// center (position compensates by half the size delta) so it doesn't
+  /// appear to slide toward its own top-left corner. Width clamped to
+  /// [90, 280]; the 150:120 aspect is preserved.
+  void resizeAmethyst(String id, double factor) {
+    final entity = _entities.whereType<AmethystEntity>().firstWhere((e) => e.id == id);
+    final oldSize = entity.size;
+    final newW = (oldSize.width * factor).clamp(90.0, 280.0);
+    final newSize = Size(newW, newW * (120 / 150));
+    entity.position += Offset((oldSize.width - newSize.width) / 2, (oldSize.height - newSize.height) / 2);
+    entity.size = newSize;
+    notifyListeners();
+  }
+
   @override
   List<SpatialEntity> getVisibleEntities(Rect viewport) => _entities;
 
@@ -284,6 +301,8 @@ class MockSpatialDataSource extends SpatialDataSource {
   void onEntityDoubleTapped(String id) {
     // Double-tap flips the card -- the Milestone 2 preview's stand-in for
     // whatever gesture/affordance Milestone 4 settles on in the real app.
+    // Only cards flip; the amethyst has no back face.
+    if (_entities.whereType<AmethystEntity>().any((e) => e.id == id)) return;
     if (!_flippedIds.remove(id)) {
       _flippedIds.add(id);
     }

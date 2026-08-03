@@ -95,6 +95,7 @@ Future<void> _pumpCanvas(
   SpatialCanvasController? controller,
   Size canvasSize = const Size(2000, 1500),
   SpatialEntityBuilder entityBuilder = _buildTestEntity,
+  BoxDecoration? Function(SpatialEntity)? liftDecorationBuilder,
 }) async {
   tester.view.physicalSize = const Size(800, 600);
   tester.view.devicePixelRatio = 1.0;
@@ -107,6 +108,7 @@ Future<void> _pumpCanvas(
         entityBuilder: entityBuilder,
         canvasSize: canvasSize,
         controller: controller,
+        liftDecorationBuilder: liftDecorationBuilder,
       ),
     ),
   );
@@ -437,6 +439,42 @@ void main() {
     expect(dataSource.selectionChanges.last, {'a'});
     // Dragging is not tapping: the tap callback must not have fired.
     expect(dataSource.tappedCalls, isEmpty);
+  });
+
+  testWidgets('liftDecorationBuilder can suppress the default drag shadow per entity', (tester) async {
+    final dataSource = _TestDataSource([
+      _TestEntity(id: 'stone', position: const Offset(100, 100)),
+      _TestEntity(id: 'card', position: const Offset(400, 100)),
+    ]);
+    await _pumpCanvas(
+      tester,
+      dataSource: dataSource,
+      liftDecorationBuilder: (e) => e.id == 'stone' ? const BoxDecoration() : null,
+    );
+
+    BoxDecoration liftDecoration(String id) => tester
+        .widget<AnimatedContainer>(
+          find.ancestor(of: find.byKey(Key('card-$id')), matching: find.byType(AnimatedContainer)).first,
+        )
+        .decoration! as BoxDecoration;
+
+    Future<void> dragAndCheck(String id, bool expectShadow) async {
+      final gesture = await tester.startGesture(tester.getCenter(find.byKey(Key('card-$id'))));
+      for (var i = 0; i < 15; i++) {
+        await gesture.moveBy(const Offset(6, 4));
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      final shadows = liftDecoration(id).boxShadow ?? const <BoxShadow>[];
+      expect(shadows.isNotEmpty, expectShadow,
+          reason: expectShadow
+              ? 'default entities keep the rounded-rect lift shadow'
+              : 'suppressed entities must not get the rectangular lift shadow');
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    await dragAndCheck('stone', false);
+    await dragAndCheck('card', true);
   });
 
   testWidgets('drag lift: card scales up while dragged, settles back on release', (tester) async {

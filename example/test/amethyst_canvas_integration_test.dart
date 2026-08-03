@@ -152,4 +152,49 @@ void main() {
       expect(relativeAfter.dy, closeTo(relativeBefore.dy, 0.5));
     },
   );
+
+  testWidgets('selecting the amethyst shows resize chips that grow/shrink it from center', (tester) async {
+    await _pumpApp(tester);
+
+    final chunkFinder = find.byType(AmethystChunk);
+    // No chips while unselected.
+    expect(find.byTooltip('Bigger'), findsNothing);
+
+    // Select with a plain tap. The module registers onDoubleTap on every
+    // entity, so the single tap only commits after the double-tap timeout
+    // (same pump technique as the parent suite's tap tests).
+    await tester.tap(chunkFinder);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Bigger'), findsOneWidget);
+    expect(find.byTooltip('Smaller'), findsOneWidget);
+
+    final sizeBefore = tester.getSize(chunkFinder);
+    final centerBefore = tester.getCenter(chunkFinder);
+
+    await tester.tap(find.byTooltip('Bigger'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    final sizeAfter = tester.getSize(find.byType(AmethystChunk));
+    final centerAfter = tester.getCenter(find.byType(AmethystChunk));
+    expect(sizeAfter.width, closeTo(sizeBefore.width * 1.15, 0.6));
+    // Grows from center: the stone shouldn't slide toward its top-left.
+    expect(centerAfter.dx, closeTo(centerBefore.dx, 1.0));
+    expect(centerAfter.dy, closeTo(centerBefore.dy, 1.0));
+
+    await tester.tap(find.byTooltip('Smaller'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(AmethystChunk)).width, closeTo(sizeBefore.width, 0.6));
+
+    // Shrinking below the clamp floor stops at 90 wide.
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.byTooltip('Smaller'));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.getSize(find.byType(AmethystChunk)).width, greaterThanOrEqualTo(90.0));
+  });
 }

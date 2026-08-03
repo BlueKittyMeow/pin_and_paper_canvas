@@ -99,6 +99,7 @@ class SpatialCanvas extends StatefulWidget {
     this.rotationSnapDegrees,
     this.positionSnapSize,
     this.background,
+    this.liftDecorationBuilder,
   }) : assert(minZoom > 0, 'minZoom must be positive'),
        assert(maxZoom >= minZoom, 'maxZoom must be >= minZoom');
 
@@ -142,6 +143,16 @@ class SpatialCanvas extends StatefulWidget {
   /// when [background] is null. Purely decorative; carries no state and
   /// receives no callbacks.
   final Widget? background;
+
+  /// Per-entity override for the drag-lift's decoration (the soft shadow
+  /// painted while an entity is being dragged). The default assumes a
+  /// rectangular card and paints a rounded-rect drop shadow -- which reads
+  /// as a "weird square shadow" under non-rectangular entities like desk
+  /// objects that paint their own grounding (owner report 2026-08-03).
+  /// Return null for the default treatment; return a [BoxDecoration]
+  /// (e.g. `const BoxDecoration()`) to replace or suppress it. The lift
+  /// *scale* always applies regardless.
+  final BoxDecoration? Function(SpatialEntity entity)? liftDecorationBuilder;
 
   @override
   State<SpatialCanvas> createState() => _SpatialCanvasState();
@@ -337,12 +348,13 @@ class _SpatialCanvasState extends State<SpatialCanvas>
           child: AnimatedContainer(
             duration: Duration(milliseconds: isDraggingThis ? 120 : 150),
             curve: isDraggingThis ? Curves.easeOut : Curves.easeIn,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: isDraggingThis
-                  ? const [BoxShadow(color: Color(0x40000000), blurRadius: 10, offset: Offset(2, 6))]
-                  : const <BoxShadow>[],
-            ),
+            decoration: isDraggingThis
+                ? (widget.liftDecorationBuilder?.call(entity) ??
+                    const BoxDecoration(
+                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                      boxShadow: [BoxShadow(color: Color(0x40000000), blurRadius: 10, offset: Offset(2, 6))],
+                    ))
+                : const BoxDecoration(),
             child: _buildEntityCore(entity, isSelected),
           ),
         ),
