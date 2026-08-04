@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, PointerScrollEvent, PointerSignalEvent;
+import 'package:flutter/services.dart' show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter/widgets.dart';
 
 import 'spatial_canvas_controller.dart';
@@ -276,6 +277,7 @@ class _SpatialCanvasState extends State<SpatialCanvas>
           onPointerDown: _handleGlobalPointerDown,
           onPointerUp: _handleGlobalPointerUp,
           onPointerCancel: _handleGlobalPointerUp,
+          onPointerSignal: _handlePointerSignal,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onScaleStart: _handleScaleStart,
@@ -409,6 +411,61 @@ class _SpatialCanvasState extends State<SpatialCanvas>
   }
 
   // --- Viewport gestures -------------------------------------------------
+
+  /// Scroll-wheel / discrete-scroll input for the viewport: plain scroll
+  /// pans the desk, Ctrl+scroll zooms at the cursor.
+  ///
+  /// This is the zero-setup input path (owner report 2026-08-03: trackpad
+  /// zoom "didn't work until I clicked the canvas first"): pointer *signals*
+  /// are dispatched purely by hover position — no gesture arena, no focus,
+  /// no prior click — so scrolling works the instant the canvas is on
+  /// screen. Smooth trackpad pan/pinch still arrives as `PointerPanZoom*`
+  /// and is handled by the outer `GestureDetector`'s Scale recognizer; a
+  /// given input event comes in as exactly one of the two, never both, so
+  /// the paths can't double-apply.
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final zoomModifier = pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+    if (zoomModifier) {
+      // Exponential per-tick factor: equal scroll distance gives equal
+      // *perceived* zoom change at any zoom level, and never flips sign.
+      // 0.002 tuned so one mouse-wheel notch (delta ~100) is a ~22% step.
+      final factor = math.exp(-event.scrollDelta.dy * 0.002);
+      final result = zoomAtFocal(
+        focal: event.localPosition,
+        pan: _pan,
+        zoom: _zoom,
+        targetZoom: _zoom * factor,
+        minZoom: widget.minZoom,
+        maxZoom: widget.maxZoom,
+      );
+      setState(() {
+        _zoom = result.zoom;
+        _pan = clampPan(
+          pan: result.pan,
+          zoom: result.zoom,
+          canvasSize: widget.canvasSize,
+          viewportSize: _viewportSize,
+        );
+      });
+    } else {
+      // Scroll content in the scrolled direction: scrolling down moves the
+      // viewport down the desk, i.e. pans the canvas up.
+      setState(() {
+        _pan = clampPan(
+          pan: _pan - event.scrollDelta,
+          zoom: _zoom,
+          canvasSize: widget.canvasSize,
+          viewportSize: _viewportSize,
+        );
+      });
+    }
+    _controller.notifyCanvasChanged();
+  }
 
   void _handleScaleStart(ScaleStartDetails details) {
     _animController?.stop();

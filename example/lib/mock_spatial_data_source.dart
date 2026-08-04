@@ -7,7 +7,6 @@ import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 import 'package:pin_and_paper_card_renderer/card_renderer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'crystal/amethyst_chunk.dart';
 
 /// Number of mock cards the example seeds the canvas with.
 ///

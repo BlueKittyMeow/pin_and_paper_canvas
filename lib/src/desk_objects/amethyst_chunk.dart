@@ -437,7 +437,7 @@ void _paintFogBlob(Canvas canvas, Offset center, double radius, double fogAmount
   final colors = [
     HSLColor.fromAHSL(alpha, 274, 0.50, 0.88).toColor(),
     HSLColor.fromAHSL(alpha * 0.45, 272, 0.45, 0.80).toColor(),
-    HSLColor.fromAHSL(0, 272, 0.45, 0.80).toColor(),
+    const HSLColor.fromAHSL(0, 272, 0.45, 0.80).toColor(),
   ];
   final shader = ui.Gradient.radial(center, radius, colors, const [0.1, 0.6, 1.0]);
   canvas.drawCircle(center, radius, Paint()..shader = shader);

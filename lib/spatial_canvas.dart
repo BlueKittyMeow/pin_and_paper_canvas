@@ -6,6 +6,7 @@
 /// `viewportMatrix`).
 library pin_and_paper_canvas;
 
+export 'src/desk_objects/amethyst_chunk.dart';
 export 'src/spatial_canvas.dart';
 export 'src/spatial_canvas_controller.dart' show SpatialCanvasController;
 export 'src/spatial_data_source.dart';

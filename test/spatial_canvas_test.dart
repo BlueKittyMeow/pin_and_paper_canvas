@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 
@@ -630,6 +631,47 @@ void main() {
 
     expect(controller.currentZoom, isNot(closeTo(zoomBefore, 0.001)),
         reason: 'a trackpad pinch over the felt must change zoom');
+  });
+
+  testWidgets('plain scroll pans the viewport with no prior click or focus', (tester) async {
+    // Pointer signals dispatch purely by hover position -- no gesture arena,
+    // no focus, no prior tap (owner report 2026-08-03: viewport input
+    // "didn't work until I clicked the canvas first"). Note: no tap or
+    // gesture precedes the scroll here; that absence IS the regression
+    // being covered.
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(300, 300))]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    final rectBefore = controller.visibleRect;
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    pointer.hover(const Offset(700, 500));
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
+    await tester.pump();
+
+    expect(controller.currentZoom, closeTo(1.0, 0.001),
+        reason: 'plain scroll must pan, not zoom');
+    expect(controller.visibleRect.top, greaterThan(rectBefore.top),
+        reason: 'scrolling down must move the viewport down the desk');
+    expect(dataSource.movedCalls, isEmpty, reason: 'scroll must never move a card');
+  });
+
+  testWidgets('ctrl+scroll zooms at the cursor with no prior click or focus', (tester) async {
+    final dataSource = _TestDataSource([_TestEntity(id: 'a', position: const Offset(300, 300))]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    final zoomBefore = controller.currentZoom;
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    pointer.hover(const Offset(700, 500));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    // Scroll up (negative dy) = zoom in, matching every desktop map/canvas.
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -120)));
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+
+    expect(controller.currentZoom, greaterThan(zoomBefore),
+        reason: 'ctrl+scroll-up must zoom in');
   });
 
   testWidgets('trackpad pinch (scale != 1) over a card zooms the viewport, never moves the card', (tester) async {

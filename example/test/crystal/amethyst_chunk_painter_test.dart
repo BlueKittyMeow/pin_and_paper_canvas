@@ -5,7 +5,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pin_and_paper_canvas_example/crystal/amethyst_chunk.dart';
+import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 
 void main() {
   Future<void> pumpChunk(WidgetTester tester, Widget chunk) async {

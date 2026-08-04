@@ -8,7 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pin_and_paper_card_renderer/card_renderer.dart';
 
-import 'package:pin_and_paper_canvas_example/crystal/amethyst_chunk.dart';
+import 'package:pin_and_paper_canvas/spatial_canvas.dart';
 import 'package:pin_and_paper_canvas_example/main.dart';
 import 'package:pin_and_paper_canvas_example/mock_spatial_data_source.dart';
 
