@@ -864,4 +864,74 @@ void main() {
     expect(controller.currentZoom, 1.0);
     expect((controller.visibleRect.center - const Offset(1250, 830)).distance, lessThan(1.0));
   });
+
+  testWidgets('entityHitTest masks pass taps through to the entity beneath', (tester) async {
+    // Card 'under' fully behind desk object 'over' (higher zIndex). The
+    // object's mask accepts only its RIGHT half — taps on its left half
+    // must fall through and select the card.
+    final under = _TestEntity(id: 'under', position: const Offset(200, 200), zIndex: 0);
+    final over = _TestEntity(id: 'over', position: const Offset(200, 200), zIndex: 5);
+    final dataSource = _TestDataSource([under, over]);
+    final controller = SpatialCanvasController();
+
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SpatialCanvas(
+          dataSource: dataSource,
+          entityBuilder: _buildTestEntity,
+          canvasSize: const Size(2000, 1500),
+          controller: controller,
+          entityHitTest: (entity, local, isSelected) =>
+              entity.id != 'over' || isSelected || local.dx >= entity.size.width / 2,
+        ),
+      ),
+    );
+
+    // Left half of the shared footprint: masked on 'over' -> 'under' wins.
+    await tester.tapAt(const Offset(210, 230));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(dataSource.tappedCalls, ['under']);
+
+    // Deselect (selection lifts an entity above its natural z-order, which
+    // would muddy the next assertion).
+    await tester.tapAt(const Offset(600, 450));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // Right half: 'over' owns it.
+    await tester.tapAt(const Offset(290, 230));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(dataSource.tappedCalls, ['under', 'over']);
+
+    // Once selected, 'over' gets its whole box back (chips live in the
+    // masked margin).
+    await tester.tapAt(const Offset(210, 230));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(dataSource.tappedCalls, ['under', 'over', 'over']);
+  });
+
+  test('amethystChunkContainsPoint: hull contains the stone, not the box corners', () {
+    const size = Size(150, 120);
+    final yaw = AmethystChunkMesh.baseAlignedYaw;
+    // Center of the stone's body.
+    expect(
+      amethystChunkContainsPoint(size: size, rotationY: yaw, point: const Offset(75, 70)),
+      isTrue,
+    );
+    // Box corners are empty felt.
+    for (final corner in const [Offset(2, 2), Offset(148, 2), Offset(2, 118), Offset(148, 118)]) {
+      expect(
+        amethystChunkContainsPoint(size: size, rotationY: yaw, point: corner, tolerance: 0),
+        isFalse,
+        reason: '$corner should be outside the silhouette',
+      );
+    }
+  });
+
+  test('DachshundHitMask answers whole-box true before masks load', () {
+    DachshundHitMask.debugReset();
+    expect(DachshundHitMask.contains(DachshundStop.threeQLeft, 0.02, 0.02), isTrue);
+  });
 }

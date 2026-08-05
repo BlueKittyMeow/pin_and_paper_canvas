@@ -444,6 +444,64 @@ void _paintFogBlob(Canvas canvas, Offset center, double radius, double fogAmount
   canvas.drawCircle(center, radius, Paint()..shader = shader);
 }
 
+/// Whether [point] (in the widget's local, un-rotated coordinates for a
+/// chunk rendered at [size] with [rotationY]) falls on the stone's
+/// projected silhouette — the convex hull of the same mesh projection the
+/// painter draws, inflated by [tolerance] logical px so near-miss taps
+/// still grab the stone.
+///
+/// Pure math (no painter instance needed): this is the hit-test half of
+/// `SpatialCanvas.entityHitTest` for crystal desk objects, so a tap on the
+/// transparent corner of the stone's bounding box falls through to
+/// whatever card sits beneath (owner report 2026-08-04).
+bool amethystChunkContainsPoint({
+  required Size size,
+  required double rotationY,
+  required Offset point,
+  double tolerance = 8,
+}) {
+  final centerX = size.width / 2;
+  final baseY = size.height * 0.78;
+  final scale = size.height * 0.42;
+  if (scale <= 0) return false;
+  final tiltCos = math.cos(kAmethystCameraTilt), tiltSin = math.sin(kAmethystCameraTilt);
+  final yawCos = math.cos(rotationY), yawSin = math.sin(rotationY);
+
+  // Same projection as the painter's `project()`, screen part only.
+  final projected = <Offset>[];
+  for (final face in AmethystChunkMesh.faces) {
+    for (final p in face) {
+      final x1 = p.x * yawCos + p.z * yawSin;
+      final z1 = -p.x * yawSin + p.z * yawCos;
+      final y2 = p.y * tiltCos - z1 * tiltSin;
+      projected.add(Offset(centerX + x1 * scale, baseY - y2 * scale));
+    }
+  }
+  final hull = _convexHull2D(projected);
+  if (hull.length < 3) return false;
+
+  // Inside test (ray crossing) with an edge-distance tolerance band.
+  var inside = false;
+  var minEdgeDistance = double.infinity;
+  for (var i = 0, j = hull.length - 1; i < hull.length; j = i++) {
+    final a = hull[j], b = hull[i];
+    if ((b.dy > point.dy) != (a.dy > point.dy)) {
+      final xAtY = b.dx + (a.dx - b.dx) * (point.dy - b.dy) / (a.dy - b.dy);
+      if (point.dx < xAtY) inside = !inside;
+    }
+    minEdgeDistance = math.min(minEdgeDistance, _distanceToSegment(point, a, b));
+  }
+  return inside || minEdgeDistance <= tolerance;
+}
+
+double _distanceToSegment(Offset p, Offset a, Offset b) {
+  final ab = b - a;
+  final lengthSquared = ab.dx * ab.dx + ab.dy * ab.dy;
+  if (lengthSquared == 0) return (p - a).distance;
+  final t = (((p - a).dx * ab.dx + (p - a).dy * ab.dy) / lengthSquared).clamp(0.0, 1.0);
+  return (p - (a + ab * t)).distance;
+}
+
 /// Normalizes a hue that may have drifted outside `[0, 360)` (the reference
 /// passes CSS `hsla()` hues like `272 + n.x*8` straight through -- CSS wraps
 /// hue automatically; [HSLColor.fromAHSL] expects it pre-wrapped).

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind, PointerScrollEvent, PointerSignalEvent;
+import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 import 'package:flutter/services.dart' show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter/widgets.dart';
 
@@ -101,6 +102,7 @@ class SpatialCanvas extends StatefulWidget {
     this.positionSnapSize,
     this.background,
     this.liftDecorationBuilder,
+    this.entityHitTest,
   }) : assert(minZoom > 0, 'minZoom must be positive'),
        assert(maxZoom >= minZoom, 'maxZoom must be >= minZoom');
 
@@ -155,8 +157,51 @@ class SpatialCanvas extends StatefulWidget {
   /// *scale* always applies regardless.
   final BoxDecoration? Function(SpatialEntity entity)? liftDecorationBuilder;
 
+  /// Optional per-entity silhouette hit-test. An entity's interactive
+  /// region defaults to its whole bounding box — fine for rectangular
+  /// cards, wrong for desk objects whose sprite frame is mostly
+  /// transparent margin (owner report 2026-08-04: tapping a card just
+  /// below the dog's nose selected the dog). Return false for a local
+  /// position (in the entity's own un-rotated coordinate space,
+  /// `Offset.zero`..`entity.size`) to make that point pass through this
+  /// entity entirely — taps, drags, and double-taps all fall to whatever
+  /// is underneath. Return true (or leave the callback null) for the
+  /// box-is-the-object default. [isSelected] is provided because selected
+  /// entities usually need their full box back: selection chips live in
+  /// the transparent margin.
+  final bool Function(SpatialEntity entity, Offset localPosition, bool isSelected)? entityHitTest;
+
   @override
   State<SpatialCanvas> createState() => _SpatialCanvasState();
+}
+
+/// Render-level gate for [SpatialCanvas.entityHitTest]: rejects the whole
+/// hit-test at masked points BEFORE the per-entity `GestureDetector` can
+/// claim them, so the pointer event continues to entities beneath.
+class _EntityHitGate extends SingleChildRenderObjectWidget {
+  const _EntityHitGate({required this.test, super.child});
+
+  final bool Function(Offset localPosition) test;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderEntityHitGate(test);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderEntityHitGate renderObject) {
+    renderObject.test = test;
+  }
+}
+
+class _RenderEntityHitGate extends RenderProxyBox {
+  _RenderEntityHitGate(this.test);
+
+  bool Function(Offset localPosition) test;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!test(position)) return false;
+    return super.hitTest(result, position: position);
+  }
 }
 
 // TickerProviderStateMixin (NOT Single-): _animateTo creates a fresh
@@ -345,10 +390,20 @@ class _SpatialCanvasState extends State<SpatialCanvas>
         // SpatialEntity.rotation is in degrees per INTERFACE_CONTRACTS.md;
         // Transform.rotate wants radians.
         angle: entity.rotation * (math.pi / 180.0),
-        // Drag lift (docs/drag-feel-research.md, Candidate 1): scale + shadow
-        // on pickup, nothing during the move — position always tracks the
-        // pointer 1:1. Tunable by eye: scale factor, shadow, durations.
-        child: AnimatedScale(
+        // The silhouette hit gate sits ABOVE the lift wrappers: the lift's
+        // AnimatedContainer is a DecoratedBox whose hitTestSelf claims the
+        // whole box, which would swallow the gate's rejection instead of
+        // letting the tap continue to entities beneath. Above them (but
+        // inside the rotation transform, so coordinates stay entity-local)
+        // a rejection removes this entity from hit-testing entirely.
+        child: _withHitGate(
+          entity,
+          isSelected,
+          // Drag lift (docs/drag-feel-research.md, Candidate 1): scale +
+          // shadow on pickup, nothing during the move — position always
+          // tracks the pointer 1:1. Tunable by eye: scale factor, shadow,
+          // durations.
+          AnimatedScale(
           scale: isDraggingThis ? 1.03 : 1.0,
           duration: Duration(milliseconds: isDraggingThis ? 120 : 150),
           curve: isDraggingThis ? Curves.easeOut : Curves.easeIn,
@@ -365,8 +420,17 @@ class _SpatialCanvasState extends State<SpatialCanvas>
             child: _buildEntityCore(entity, isSelected),
           ),
         ),
+        ),
       ),
     );
+  }
+
+  /// Wraps [child] in the [SpatialCanvas.entityHitTest] gate, or returns it
+  /// untouched when no callback is configured.
+  Widget _withHitGate(SpatialEntity entity, bool isSelected, Widget child) {
+    final hitTest = widget.entityHitTest;
+    if (hitTest == null) return child;
+    return _EntityHitGate(test: (local) => hitTest(entity, local, isSelected), child: child);
   }
 
   Widget _buildEntityCore(SpatialEntity entity, bool isSelected) {
