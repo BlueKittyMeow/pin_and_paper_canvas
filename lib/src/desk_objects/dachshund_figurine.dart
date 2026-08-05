@@ -30,6 +30,12 @@ enum DachshundStop {
   DachshundStop get next => DachshundStop.values[(index + 1) % DachshundStop.values.length];
 }
 
+/// The seven turntable stops are the SHARED camera rig for every sprite
+/// desk object (dachshund, gems, whatever comes next) — the enum predates
+/// the second resident, hence the breed-specific name. New code should
+/// prefer this alias.
+typedef SpriteStop = DachshundStop;
+
 /// The marble longhaired dachshund figurine (asset `dachshund-v1-approved`,
 /// owner-accepted 2026-08-04) as a desk object: three stacked prerendered
 /// sprite layers per rotation stop — contact shadow, cast shadow (both

@@ -24,3 +24,11 @@ flutter:
     # shadow 256px}. Rendered neutral-lit per the desk style bible; shadow
     # layers composite at ~40% opacity in DachshundFigurine.
     - assets/desk_objects/dachshund/
+    # Gem habit bundle (habit_v1, owner-approved 2026-08-05): five minerals,
+    # each modeled in its real growth habit. Same layout as the dachshund:
+    # 960px neutral-lit color + 320px shadow layers x 7 stops.
+    - assets/desk_objects/gems/amethyst/
+    - assets/desk_objects/gems/citrine/
+    - assets/desk_objects/gems/rose_quartz/
+    - assets/desk_objects/gems/fluorite/
+    - assets/desk_objects/gems/snowflake_obsidian/
