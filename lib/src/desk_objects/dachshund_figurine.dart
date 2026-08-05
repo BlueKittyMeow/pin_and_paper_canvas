@@ -38,8 +38,12 @@ enum DachshundStop {
 ///
 /// The layers are same-frame renders (one square ortho camera per stop), so
 /// stacking them in one square box keeps them registered at any display
-/// size. Color ships at 768px for crispness under canvas zoom; the soft
-/// shadow blobs ship at 256px — resolution they don't need. Neutral
+/// size. The frame is the WIDENED final_v2 one (1.75× final_v1's): the sun's
+/// ~46° elevation throws the cast shadow roughly a body length past the
+/// dog, so the frame is mostly breathing room for it — the dog himself
+/// occupies only the central ~40%. Color ships at the 1344px master for
+/// crispness under canvas zoom; the soft shadow blobs ship at 448px —
+/// resolution they don't need. Neutral
 /// lighting is deliberate (style bible): global tint/softness for
 /// time-of-day arrives as a runtime layer, never baked into sprites. Light
 /// direction matches the desk sun ([kDeskLightAzimuth], top-right → shadows
@@ -60,9 +64,10 @@ class DachshundFigurine extends StatelessWidget {
 
   /// Display box (square: the sprite frames are square). Per the bundle
   /// manifest's `ppm_multiplier: 2` tiny-prop exception, true desk scale is
-  /// HALF the render's px/m — i.e. a 128-logical-px box shows the real
-  /// 9 cm figurine at the desk's global 3000 px/m... but on this desk, size
-  /// is ultimately whatever sparks joy (resize chips, like the amethyst).
+  /// HALF the render's px/m — with the widened 0.224 m frame, a
+  /// 224-logical-px box shows the real 9 cm figurine at the desk's scale...
+  /// but on this desk, size is ultimately whatever sparks joy (resize
+  /// chips, like the amethyst).
   final Size size;
 
   /// Which prerendered rotation stop to show.
