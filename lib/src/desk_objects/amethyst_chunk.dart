@@ -431,13 +431,14 @@ void _paintPool(
 /// Paints one milky fog-bank inclusion: a 3-stop radial gradient (bright
 /// core, softer mid, transparent edge), matching the reference's per-blob
 /// `createRadialGradient` with stops at `r*0.1`/`0.6`/`1.0`.
-void _paintFogBlob(Canvas canvas, Offset center, double radius, double fogAmount, FogBlob blob) {
+void _paintFogBlob(Canvas canvas, Offset center, double radius, double fogAmount, FogBlob blob,
+    {double hueShift = 0}) {
   if (radius <= 0) return; // degenerate layout (e.g. Size.zero) -- nothing to paint
   final alpha = (blob.alpha * fogAmount).clamp(0.0, 1.0);
   final colors = [
-    HSLColor.fromAHSL(alpha, 274, 0.50, 0.88).toColor(),
-    HSLColor.fromAHSL(alpha * 0.45, 272, 0.45, 0.80).toColor(),
-    const HSLColor.fromAHSL(0, 272, 0.45, 0.80).toColor(),
+    HSLColor.fromAHSL(alpha, _wrapHue(274 + hueShift), 0.50, 0.88).toColor(),
+    HSLColor.fromAHSL(alpha * 0.45, _wrapHue(272 + hueShift), 0.45, 0.80).toColor(),
+    HSLColor.fromAHSL(0, _wrapHue(272 + hueShift), 0.45, 0.80).toColor(),
   ];
   final shader = ui.Gradient.radial(center, radius, colors, const [0.1, 0.6, 1.0]);
   canvas.drawCircle(center, radius, Paint()..shader = shader);
@@ -479,6 +480,7 @@ class AmethystChunkPainter extends CustomPainter {
     required this.inclusions,
     required this.glassiness,
     required this.isSelected,
+    this.hueShift = 0,
   });
 
   /// Yaw around the vertical axis, in radians. Reference: `state.rot`.
@@ -500,6 +502,23 @@ class AmethystChunkPainter extends CustomPainter {
   /// selection treatment (fable-review.md's card glow/border) -- a mineral
   /// doesn't need a border to read as picked up.
   final bool isSelected;
+
+  /// Rotates every stone hue by this many degrees (0 = the reference's
+  /// amethyst purples, ~272°). This is what turns one painter into a whole
+  /// mineral collection — citrine, rose quartz, fluorite — without touching
+  /// the geometry, shading, or shadow work. Shadows stay neutral: only the
+  /// crystal's own colors (faces, fog, pools, base shade) rotate.
+  final double hueShift;
+
+  /// [hue] rotated by [hueShift] and wrapped to `[0, 360)`.
+  double _hue(double hue) => _wrapHue(hue + hueShift);
+
+  /// [color] with its hue rotated by [hueShift] (alpha/sat/lightness kept).
+  Color _shifted(Color color) {
+    if (hueShift == 0) return color;
+    final hsl = HSLColor.fromColor(color);
+    return hsl.withHue(_wrapHue(hsl.hue + hueShift)).toColor();
+  }
 
   /// Fixed camera pitch. DELIBERATE DEVIATION from the reference's -0.21:
   /// the fitting-room demo rendered the stone in isolation from a low
@@ -654,8 +673,8 @@ class AmethystChunkPainter extends CustomPainter {
         centerX: contactCx + shadowDx * scale * 0.26,
         centerY: contactCy + shadowDy * scale * 0.30,
         radius: scale * 0.42,
-        innerColor: Color.fromRGBO(155, 92, 222, poolAlpha),
-        outerColor: const Color.fromRGBO(139, 92, 201, 0),
+        innerColor: _shifted(Color.fromRGBO(155, 92, 222, poolAlpha)),
+        outerColor: _shifted(const Color.fromRGBO(139, 92, 201, 0)),
         verticalSquish: 0.42,
       );
       _paintPool(
@@ -663,8 +682,8 @@ class AmethystChunkPainter extends CustomPainter {
         centerX: contactCx + shadowDx * scale * 0.40 - scale * 0.04,
         centerY: contactCy + shadowDy * scale * 0.34,
         radius: scale * 0.22,
-        innerColor: Color.fromRGBO(172, 112, 238, poolAlpha * 0.9),
-        outerColor: const Color.fromRGBO(139, 92, 201, 0),
+        innerColor: _shifted(Color.fromRGBO(172, 112, 238, poolAlpha * 0.9)),
+        outerColor: _shifted(const Color.fromRGBO(139, 92, 201, 0)),
         verticalSquish: 0.45,
       );
       canvas.restore();
@@ -691,7 +710,7 @@ class AmethystChunkPainter extends CustomPainter {
       final lambert = math.max(0.0, f.normal.dot(light));
       final lightness = (0.12 + lambert * 0.18).clamp(0.0, 1.0);
       final path = _polygonPath(f.screenPoints);
-      canvas.drawPath(path, Paint()..color = HSLColor.fromAHSL(0.85, 270, 0.38, lightness).toColor());
+      canvas.drawPath(path, Paint()..color = HSLColor.fromAHSL(0.85, _hue(270), 0.38, lightness).toColor());
     }
 
     // --- fog/veils, clipped to the projected silhouette (hull computed
@@ -705,20 +724,20 @@ class AmethystChunkPainter extends CustomPainter {
         final path = _polygonPath(screenPts);
         canvas.drawPath(
           path,
-          Paint()..color = HSLColor.fromAHSL((0.16 * inclusions + 0.04).clamp(0.0, 1.0), 276, 0.45, 0.84).toColor(),
+          Paint()..color = HSLColor.fromAHSL((0.16 * inclusions + 0.04).clamp(0.0, 1.0), _hue(276), 0.45, 0.84).toColor(),
         );
         canvas.drawPath(
           path,
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.4
-            ..color = HSLColor.fromAHSL((0.22 * inclusions).clamp(0.0, 1.0), 280, 0.60, 0.90).toColor(),
+            ..color = HSLColor.fromAHSL((0.22 * inclusions).clamp(0.0, 1.0), _hue(280), 0.60, 0.90).toColor(),
         );
       }
 
       for (final blob in AmethystChunkMesh.fogBlobs) {
         final center = project(blob.center).screen;
-        _paintFogBlob(canvas, center, blob.radius * scale, inclusions, blob);
+        _paintFogBlob(canvas, center, blob.radius * scale, inclusions, blob, hueShift: hueShift);
       }
 
       canvas.restore();
@@ -739,7 +758,7 @@ class AmethystChunkPainter extends CustomPainter {
       final reflectZ = light.z - 2 * lambert * f.normal.z;
       final spec = math.pow(math.max(0.0, -reflectZ), 18).toDouble() * specularBoost;
 
-      final hue = _wrapHue(272 + f.normal.x * 8);
+      final hue = _hue(272 + f.normal.x * 8);
       final saturation = (0.42 + lambert * 0.18).clamp(0.0, 1.0);
       final lightness = (0.20 + lambert * 0.44 + spec * 0.22).clamp(0.0, 1.0);
       final path = _polygonPath(f.screenPoints);
@@ -782,7 +801,7 @@ class AmethystChunkPainter extends CustomPainter {
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1
-            ..color = HSLColor.fromAHSL(strokeAlpha, 280, 0.60, strokeLightness).toColor(),
+            ..color = HSLColor.fromAHSL(strokeAlpha, _hue(280), 0.60, strokeLightness).toColor(),
         );
       }
       canvas.restore();
@@ -809,7 +828,7 @@ class AmethystChunkPainter extends CustomPainter {
       canvas.drawPath(
         occlusion,
         Paint()
-          ..color = const Color.fromRGBO(30, 16, 44, 0.32)
+          ..color = _shifted(const Color.fromRGBO(30, 16, 44, 0.32))
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, scale * 0.03),
       );
       canvas.restore();
@@ -822,7 +841,8 @@ class AmethystChunkPainter extends CustomPainter {
       oldDelegate.lightAzimuthDegrees != lightAzimuthDegrees ||
       oldDelegate.inclusions != inclusions ||
       oldDelegate.glassiness != glassiness ||
-      oldDelegate.isSelected != isSelected;
+      oldDelegate.isSelected != isSelected ||
+      oldDelegate.hueShift != hueShift;
 }
 
 /// The amethyst chunk desk object -- a raw, squat crystal built as the
@@ -849,6 +869,7 @@ class AmethystChunk extends StatelessWidget {
     this.glassiness = 0.62,
     this.isSelected = false,
     this.rotationY = 0.15,
+    this.hueShift = 0,
   });
 
   /// Visual size of the widget. Matches [AmethystChunk]'s entity size on the
@@ -890,6 +911,11 @@ class AmethystChunk extends StatelessWidget {
   /// desk objects yet), so this is just the pose to render.
   final double rotationY;
 
+  /// Hue rotation in degrees — 0 is the reference amethyst; other values
+  /// recolor the same stone into different minerals (see
+  /// [AmethystChunkPainter.hueShift]).
+  final double hueShift;
+
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
@@ -900,6 +926,7 @@ class AmethystChunk extends StatelessWidget {
         inclusions: inclusions,
         glassiness: glassiness,
         isSelected: isSelected,
+        hueShift: hueShift,
       ),
     );
   }
