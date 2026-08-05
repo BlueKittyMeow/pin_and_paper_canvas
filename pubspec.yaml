@@ -18,3 +18,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # Dachshund figurine sprite bundle (marble longhaired dachshund,
+    # dachshund-v1-approved): 7 rotation stops x {color 768px, cast/contact
+    # shadow 256px}. Rendered neutral-lit per the desk style bible; shadow
+    # layers composite at ~40% opacity in DachshundFigurine.
+    - assets/desk_objects/dachshund/
