@@ -813,4 +813,55 @@ void main() {
     expect(dataSource.canvasTappedCalls, hasLength(1));
     expect(dataSource.canvasTappedCalls.single, const Offset(700, 500));
   });
+
+  testWidgets('focusOnEntity works REPEATEDLY (regression: single-ticker broke the 2nd animated pan)', (
+    tester,
+  ) async {
+    // Two entities far apart (but away from the canvas edges, where the
+    // pan clamp would legitimately stop short of centering); focus one,
+    // then the other, then the first again. Under
+    // SingleTickerProviderStateMixin the second animated pan ever threw
+    // (one ticker per State lifetime) and every find-my-object tap after
+    // the first silently no-opped.
+    final a = _TestEntity(id: 'a', position: const Offset(600, 500));
+    final b = _TestEntity(id: 'b', position: const Offset(1200, 800));
+    final dataSource = _TestDataSource([a, b]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    Offset visibleCenter() => controller.visibleRect.center;
+
+    controller.focusOnEntity('a');
+    await tester.pumpAndSettle();
+    expect((visibleCenter() - const Offset(650, 530)).distance, lessThan(1.0));
+
+    controller.focusOnEntity('b');
+    await tester.pumpAndSettle();
+    expect((visibleCenter() - const Offset(1250, 830)).distance, lessThan(1.0));
+
+    controller.focusOnEntity('a');
+    await tester.pumpAndSettle();
+    expect((visibleCenter() - const Offset(650, 530)).distance, lessThan(1.0));
+  });
+
+  testWidgets('focusOnEntity from a zoomed-out view restores 1:1 zoom so the pan is not clamp-eaten', (
+    tester,
+  ) async {
+    final a = _TestEntity(id: 'a', position: const Offset(1200, 800));
+    final dataSource = _TestDataSource([a]);
+    final controller = SpatialCanvasController();
+    await _pumpCanvas(tester, dataSource: dataSource, controller: controller);
+
+    // Zoom all the way out: 2000x1500 canvas at 0.5 = 1000x750, taller than
+    // the 600px viewport height — the pan clamp centers that axis and a
+    // pan-only focus can't reach the target.
+    controller.zoomTo(0.5);
+    await tester.pumpAndSettle();
+
+    controller.focusOnEntity('a');
+    await tester.pumpAndSettle();
+
+    expect(controller.currentZoom, 1.0);
+    expect((controller.visibleRect.center - const Offset(1250, 830)).distance, lessThan(1.0));
+  });
 }

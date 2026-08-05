@@ -159,8 +159,13 @@ class SpatialCanvas extends StatefulWidget {
   State<SpatialCanvas> createState() => _SpatialCanvasState();
 }
 
+// TickerProviderStateMixin (NOT Single-): _animateTo creates a fresh
+// AnimationController per animated pan/zoom, and the Single- variant vends
+// exactly one ticker per State lifetime — the second programmatic pan ever
+// would trip its assert and silently no-op the gesture (owner report
+// 2026-08-04: drawer's find-my-object "worked once and then STOPPED").
 class _SpatialCanvasState extends State<SpatialCanvas>
-    with SingleTickerProviderStateMixin
+    with TickerProviderStateMixin
     implements SpatialCanvasControllerDelegate {
   Offset _pan = Offset.zero;
   double _zoom = 1.0;
@@ -691,6 +696,22 @@ class _SpatialCanvasState extends State<SpatialCanvas>
     }
     if (found == null) return;
     final center = found.position + Offset(found.size.width / 2, found.size.height / 2);
+    // Below 100% zoom the pan clamp starts centering whole axes (see
+    // _clampPanAxis's inverted-range branch), which can eat the focus pan
+    // entirely — so focusing also restores at least 1:1 zoom. Never zooms
+    // OUT someone who has zoomed in past 100%.
+    if (_zoom < 1.0 && widget.maxZoom >= 1.0) {
+      final targetZoom = 1.0.clamp(widget.minZoom, widget.maxZoom).toDouble();
+      final screenCenter = Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+      final clamped = clampPan(
+        pan: screenCenter - center * targetZoom,
+        zoom: targetZoom,
+        canvasSize: widget.canvasSize,
+        viewportSize: _viewportSize,
+      );
+      _animateTo(pan: clamped, zoom: targetZoom, animate: animate);
+      return;
+    }
     panTo(center, animate: animate);
   }
 
