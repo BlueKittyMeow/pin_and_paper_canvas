@@ -1,5 +1,7 @@
 # Fable — Canvas Module Pre-Build Review
 
+> **As-built correction (2026-08-03):** §1.3/§1.4's claim below that drag delta "must be divided by `_zoom`" is wrong as literal implementation guidance, though right in intent. The per-card `GestureDetector` lives *inside* `Transform(viewportMatrix)`, and Flutter's `DragUpdateDetails.delta` is already expressed in that local (post-scale) coordinate space — dividing by zoom again double-divides (invisible at zoom 1.0, silently halves drags at zoom 2.0). The as-built handler (`SpatialCanvas._handlePanUpdate` in `lib/src/spatial_canvas.dart`) uses the delta as-is. Evidence: `test/spatial_canvas_test.dart`, `'dragging a card at zoom 2.0 divides the screen delta by zoom'`, which caught the double-division bug this doc's original text would have reintroduced. See that widget's doc comment for the full explanation.
+
 **Date:** 2026-07-09
 **State:** Repo is empty (`.gitkeep`). This is a pre-implementation review of `CANVAS_SPEC.md` + `INTERFACE_CONTRACTS.md` (dev harness repo) with concrete technical decisions, so the implementer doesn't have to make them mid-build. The spec itself is good — follow it; this doc pins down the parts it leaves open and flags the traps.
 
