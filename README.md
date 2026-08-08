@@ -12,6 +12,8 @@ Specs will live in: `pin_and_paper_dev_harness/docs/module_specs/CANVAS_SPEC.md`
 
 Interface contracts: `pin_and_paper_dev_harness/docs/INTERFACE_CONTRACTS.md`
 
+**Active plan** (drag-and-drop canvas MVP → POC): [`pin_and_paper_dev_harness/docs/working/DRAG_DROP_CANVAS_MVP_PLAN.md`](https://github.com/BlueKittyMeow/pin_and_paper_dev_harness/blob/main/docs/working/DRAG_DROP_CANVAS_MVP_PLAN.md)
+
 ## Planned Features
 
 - Bounded canvas with configurable limits
